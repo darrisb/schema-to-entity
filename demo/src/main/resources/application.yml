@@ -1,0 +1,17 @@
+spring:
+  application:
+    name: schema-to-entity-demo
+  datasource:
+    # Overridden in Docker by SPRING_DATASOURCE_* environment variables.
+    url: jdbc:postgresql://localhost:5433/dynamic_meta_db
+    username: dynamic_meta_user
+    password: dynamic_meta_password
+
+server:
+  port: 8080
+
+schema-to-entity:
+  enabled: true
+  web-enabled: true
+  explicit-connections-enabled: true
+  schema: public

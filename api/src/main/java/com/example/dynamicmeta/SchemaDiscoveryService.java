@@ -1,6 +1,11 @@
 package com.example.dynamicmeta;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import javax.sql.DataSource;
+import java.io.IOException;
+import java.io.InputStream;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.DriverManager;
@@ -21,12 +26,28 @@ import java.util.Set;
 /** Discovers tables through standard JDBC metadata. */
 public class SchemaDiscoveryService {
 
+    private static final String SAMPLE_RESOURCE = "/sample-schema.json";
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
     private final DataSource dataSource;
     private final SchemaToEntityProperties properties;
 
     public SchemaDiscoveryService(DataSource dataSource, SchemaToEntityProperties properties) {
         this.dataSource = dataSource;
         this.properties = properties;
+    }
+
+    /** Returns a fixed schema so the API can be demonstrated without a database. */
+    public Map<String, Object> sample() {
+        try (InputStream stream = SchemaDiscoveryService.class.getResourceAsStream(SAMPLE_RESOURCE)) {
+            if (stream == null) {
+                throw new IllegalStateException("Sample schema resource is missing: " + SAMPLE_RESOURCE);
+            }
+            return MAPPER.readValue(stream, new TypeReference<Map<String, Object>>() {
+            });
+        } catch (IOException e) {
+            throw new IllegalStateException("Sample schema could not be read", e);
+        }
     }
 
     /** Uses the DataSource already configured by the containing Spring Boot application. */

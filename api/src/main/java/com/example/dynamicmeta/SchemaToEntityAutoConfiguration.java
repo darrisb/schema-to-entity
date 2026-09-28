@@ -27,6 +27,12 @@ public class SchemaToEntityAutoConfiguration {
         return new SchemaDiscoveryService(dataSource, properties);
     }
 
+    @Bean
+    @ConditionalOnMissingBean
+    SpringMetadataTransformer springMetadataTransformer() {
+        return new SpringMetadataTransformer();
+    }
+
     @Configuration(proxyBeanMethods = false)
     @ConditionalOnClass(name = "org.springframework.web.bind.annotation.RestController")
     @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
@@ -35,8 +41,9 @@ public class SchemaToEntityAutoConfiguration {
 
         @Bean
         @ConditionalOnMissingBean
-        SchemaDiscoveryController schemaDiscoveryController(SchemaDiscoveryService service) {
-            return new SchemaDiscoveryController(service);
+        SchemaDiscoveryController schemaDiscoveryController(
+                SchemaDiscoveryService service, SpringMetadataTransformer transformer) {
+            return new SchemaDiscoveryController(service, transformer);
         }
     }
 }

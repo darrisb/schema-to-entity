@@ -19,9 +19,12 @@ import java.util.Map;
 public class SchemaDiscoveryController {
 
     private final SchemaDiscoveryService discoveryService;
+    private final SpringMetadataTransformer metadataTransformer;
 
-    public SchemaDiscoveryController(SchemaDiscoveryService discoveryService) {
+    public SchemaDiscoveryController(
+            SchemaDiscoveryService discoveryService, SpringMetadataTransformer metadataTransformer) {
         this.discoveryService = discoveryService;
+        this.metadataTransformer = metadataTransformer;
     }
 
     @GetMapping({"", "/datasource"})
@@ -31,10 +34,24 @@ public class SchemaDiscoveryController {
         return discoveryService.discover(schema, tables == null ? List.of() : tables);
     }
 
+    @GetMapping("/sample")
+    public Map<String, Object> sample() {
+        return discoveryService.sample();
+    }
+
     @PostMapping({"/extract", "/extract-postgres"})
     public Map<String, Object> fromConnectionString(
             @RequestBody SchemaDiscoveryService.ConnectionRequest request) throws SQLException {
         return discoveryService.discover(request);
+    }
+
+    @PostMapping("/to-spring-metadata")
+    public Map<String, Object> toSpringMetadata(@RequestBody MetadataRequest request) {
+        if (request == null || request.schema() == null) {
+            throw new IllegalArgumentException("A schema is required");
+        }
+        return metadataTransformer.transform(request.schema(),
+                request.options() == null ? null : request.options().entityNamePrefix());
     }
 
     @ExceptionHandler({IllegalArgumentException.class, IllegalStateException.class})
@@ -51,5 +68,10 @@ public class SchemaDiscoveryController {
     private static String redact(String message) {
         if (message == null) return "Database operation failed";
         return message.replaceAll("(?i)(postgres(?:ql)?://[^:/@\\s]+):[^@\\s]+@", "$1:***@");
+    }
+
+    public record MetadataRequest(Map<String, Object> schema, Options options) {
+        public record Options(String entityNamePrefix) {
+        }
     }
 }

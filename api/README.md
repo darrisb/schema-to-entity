@@ -36,11 +36,27 @@ Map<String, Object> schema = schemas.discover();
 If the application is a servlet web application, these endpoints are also added:
 
 ```text
-GET /api/schema
-GET /api/schema/datasource?schema=public
+GET  /api/schema
+GET  /api/schema/datasource?schema=public
+GET  /api/schema/sample
+POST /api/schema/to-spring-metadata
 ```
 
-Both use the host application's `DataSource`.
+Both use the host application's `DataSource`. `/api/schema/sample` returns a fixed schema and needs no database, so the API can be demonstrated before anything is connected.
+
+`/api/schema/to-spring-metadata` turns a discovered schema into Spring dynamic-entity metadata:
+
+```http
+POST /api/schema/to-spring-metadata
+Content-Type: application/json
+
+{
+  "schema": { "dialect": "postgresql", "tables": [] },
+  "options": { "entityNamePrefix": "Dynamic" }
+}
+```
+
+It returns `schemaVersion`, `dialect`, `generatedAt` and `entities`, where each entity carries a `primaryKey` (single or composite), `properties` and `relationships`. `entityNamePrefix` is optional and defaults to `Dynamic`.
 
 ## Explicit URL
 

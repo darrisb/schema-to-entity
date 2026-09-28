@@ -2,3 +2,4 @@
 /workspace/src/main/java/com/example/dynamicmeta/SchemaDiscoveryService.java
 /workspace/src/main/java/com/example/dynamicmeta/SchemaToEntityAutoConfiguration.java
 /workspace/src/main/java/com/example/dynamicmeta/SchemaToEntityProperties.java
+/workspace/src/main/java/com/example/dynamicmeta/SpringMetadataTransformer.java
