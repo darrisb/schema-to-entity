@@ -1,0 +1,54 @@
+services:
+  database:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: dynamic_meta_db
+      POSTGRES_USER: dynamic_meta_user
+      POSTGRES_PASSWORD: dynamic_meta_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dynamic_meta_user -d dynamic_meta_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      database:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://database:5432/dynamic_meta_db
+      SPRING_DATASOURCE_USERNAME: dynamic_meta_user
+      SPRING_DATASOURCE_PASSWORD: dynamic_meta_password
+    ports:
+      - "8081:8080"
+    restart: unless-stopped
+
+  schema-api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+
+  ui:
+    build:
+      context: .
+      dockerfile: ui/Dockerfile
+    depends_on:
+      - api
+      - schema-api
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

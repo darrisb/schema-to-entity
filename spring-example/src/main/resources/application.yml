@@ -1,0 +1,12 @@
+spring:
+  application:
+    name: spring-example
+  datasource:
+    url: jdbc:postgresql://localhost:5433/appdb
+    username: postgres
+    password: passtest
+    driver-class-name: org.postgresql.Driver
+
+dynamic-entities:
+  dialect: org.hibernate.dialect.PostgreSQLDialect
+  ddl-auto: validate

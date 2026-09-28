@@ -1,0 +1,8 @@
+com/example/dynamicmeta/SchemaToEntityAutoConfiguration$WebConfiguration.class
+com/example/dynamicmeta/SchemaDiscoveryService$ConnectionRequest.class
+com/example/dynamicmeta/SchemaToEntityProperties.class
+META-INF/spring-configuration-metadata.json
+com/example/dynamicmeta/SchemaDiscoveryController.class
+com/example/dynamicmeta/SchemaDiscoveryService$ResolvedConnection.class
+com/example/dynamicmeta/SchemaDiscoveryService.class
+com/example/dynamicmeta/SchemaToEntityAutoConfiguration.class
