@@ -108,6 +108,20 @@ class SpringMetadataTransformerTests {
     }
 
     @Test
+    void flagsATableWithoutAPrimaryKeyAsSynthetic() {
+        Map<String, Object> schema = Map.of("tables", List.of(
+                Map.of("name", "audit_log", "columns", List.of(
+                        Map.of("name", "message", "type", "text", "nullable", true)))));
+
+        Map<String, Object> auditLog = entity(transformer.transform(schema, "Dynamic"), "DynamicAuditLog");
+
+        assertThat(auditLog.get("primaryKey")).isEqualTo(Map.of("synthetic", true));
+        assertThat(properties(auditLog)).containsExactly(
+                map("name", "message", "columnName", "message", "type", "java.lang.String",
+                        "nullable", true, "columnSqlType", "text"));
+    }
+
+    @Test
     void producesAnEmptyEntityListForASchemaWithoutTables() {
         assertThat(entities(transformer.transform(Map.of("dialect", "postgresql"), "Dynamic"))).isEmpty();
     }

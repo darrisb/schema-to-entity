@@ -105,7 +105,7 @@ public class SpringMetadataTransformer {
 
     private Map<String, Object> primaryKey(List<String> primaryKey, List<Map<String, Object>> columns) {
         if (primaryKey.isEmpty()) {
-            return null;
+            return Map.of("synthetic", true);
         }
         if (primaryKey.size() == 1) {
             Map<String, Object> column = column(columns, primaryKey.getFirst());

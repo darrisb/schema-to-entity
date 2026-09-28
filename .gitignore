@@ -1,0 +1,34 @@
+# See https://docs.github.com/get-started/getting-started-with-git/ignoring-files for more about ignoring files.
+
+# Java / Maven
+target/
+*.jar
+*.class
+
+# Node / Angular (see also ui/.gitignore)
+node_modules/
+dist/
+.angular/
+
+# Logs
+*.log
+ngserve.log
+
+# Runtime metadata written outside the packaged jar
+config/spring-entities-config.json
+
+# IDEs and editors
+.idea/
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+.vscode/
+.history/
+bin/
+
+# Operating system files
+.DS_Store
+Thumbs.db
