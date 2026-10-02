@@ -2,43 +2,35 @@
 
 <div class="section">
   <label for="conn">PostgreSQL connection URL</label>
-  <input
-    id="conn"
-    #connInput
-    type="password"
-    placeholder="postgresql://user:***@host:5432/dbname"
-    autocomplete="off"
-  />
+  <!-- Added (input)="0" to trigger change detection -->
+  <input id="conn" #connInput (input)="0" type="password" placeholder="postgresql://user:***@host:5432/dbname"
+    autocomplete="off" />
+
   <label for="schema">Schema name</label>
   <input id="schema" #schemaInput type="text" value="public" />
-  <button
-    class="secondary"
-    type="button"
-    [disabled]="schemaService.extracting() || !connInput.value"
-    (click)="schemaService.extractPostgres(connInput.value, schemaInput.value || 'public')"
-  >
+
+  <button class="secondary" type="button" [disabled]="schemaService.extracting() || !connInput.value"
+    (click)="schemaService.extractPostgres(connInput.value, schemaInput.value || 'public')">
     {{ schemaService.extracting() ? 'Connecting…' : 'Connect & Extract Schema' }}
   </button>
 </div>
+
 
 <div class="actions">
   <button class="secondary" type="button" (click)="schemaService.loadSample()">
     Load Sample Schema
   </button>
 
-  <button
-    type="button"
-    [disabled]="schemaService.exporting() || !schemaService.enrichedSchema()"
-    (click)="schemaService.exportSpringMetadata()"
-  >
+  <button type="button" [disabled]="schemaService.exporting() || !schemaService.enrichedSchema()"
+    (click)="schemaService.exportSpringMetadata()">
     {{ schemaService.exporting() ? 'Exporting…' : 'Export Spring Metadata JSON' }}
   </button>
 </div>
 
 @if (schemaService.lastExtractSummary(); as summary) {
-  <p class="summary">{{ summary }}</p>
+<p class="summary">{{ summary }}</p>
 }
 
 @if (schemaService.error(); as errorMessage) {
-  <p class="error">{{ errorMessage }}</p>
+<p class="error">{{ errorMessage }}</p>
 }

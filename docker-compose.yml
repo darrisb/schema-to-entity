@@ -25,11 +25,12 @@ services:
       database:
         condition: service_healthy
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://database:5432/dynamic_meta_db
-      SPRING_DATASOURCE_USERNAME: dynamic_meta_user
-      SPRING_DATASOURCE_PASSWORD: dynamic_meta_password
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/orchestrator?currentSchema=public
+      SPRING_DATASOURCE_USERNAME: orchestrator
+      SPRING_DATASOURCE_PASSWORD: orchestrator
     ports:
       - "8081:8080"
+    networks: [default, orchestrator]
     restart: unless-stopped
 
   ui:
@@ -42,5 +43,9 @@ services:
       - "8080:80"
     restart: unless-stopped
 
+networks:
+  orchestrator:
+    external: true
+    name: development-orchestrator_default
 volumes:
   postgres_data:

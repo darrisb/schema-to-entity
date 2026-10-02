@@ -1,4 +1,9 @@
-import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+} from '@angular/core';
 import { SidebarComponent } from './sidebar/sidebar.component';
 import { SchemaService } from './services/schema.service';
 
@@ -66,10 +71,23 @@ interface SpringEntity {
               <p class="eyebrow">Schema</p>
               <h1>{{ schemaTitle() }}</h1>
             </div>
+
+            <p>total count is : {{ selectedTablesCount() }}</p>
             @if (tables().length) {
               <div class="stats" aria-label="Schema summary">
                 <span>{{ tables().length }} table(s)</span>
                 <span>{{ columnCount() }} column(s)</span>
+              </div>
+            }
+            @if (selectedTablesCount() > 0) {
+              <div class="selected-tables-action">
+                <button
+                  class="action-button"
+                  (click)="navigateToSelectedTables()"
+                >
+                  Edit in Page Builder ({{ getSelectedCount() }} tables
+                  selected)
+                </button>
               </div>
             }
           </div>
@@ -79,11 +97,24 @@ interface SpringEntity {
               @for (table of tables(); track tableName(table)) {
                 <article class="table-card">
                   <header>
-                    <h2>{{ tableName(table) }}</h2>
+                    <div class="table-header-content">
+                      <div class="table-checkbox">
+                        <input
+                          type="checkbox"
+                          [checked]="isTableSelected(table)"
+                          (change)="toggleTableSelection(table)"
+                          [attr.aria-label]="'Select table ' + tableName(table)"
+                        />
+                      </div>
+                      <h2>{{ tableName(table) }}</h2>
+                    </div>
                     <span>{{ tableColumns(table).length }} column(s)</span>
                   </header>
                   <div class="columns">
-                    @for (column of tableColumns(table); track columnName(column)) {
+                    @for (
+                      column of tableColumns(table);
+                      track columnName(column)
+                    ) {
                       <div class="column-row">
                         <div>
                           <strong>{{ columnName(column) }}</strong>
@@ -101,7 +132,9 @@ interface SpringEntity {
                     }
                   </div>
                   @if (foreignKeyCount(table) > 0) {
-                    <p class="relationship-note">{{ foreignKeyCount(table) }} foreign key(s)</p>
+                    <p class="relationship-note">
+                      {{ foreignKeyCount(table) }} foreign key(s)
+                    </p>
                   }
                 </article>
               }
@@ -109,7 +142,10 @@ interface SpringEntity {
           } @else {
             <div class="empty-state">
               <h2>No schema loaded</h2>
-              <p>Load the sample schema or connect to PostgreSQL to preview tables here.</p>
+              <p>
+                Load the sample schema or connect to PostgreSQL to preview
+                tables here.
+              </p>
             </div>
           }
         </section>
@@ -126,15 +162,22 @@ interface SpringEntity {
               </div>
             </div>
             <div class="entity-list">
-              @for (entity of entities(); track entity.entityName || entity.tableName) {
+              @for (
+                entity of entities();
+                track entity.entityName || entity.tableName
+              ) {
                 <article class="entity-row">
                   <div>
                     <h2>{{ entity.entityName }}</h2>
                     <p>{{ entity.tableName }}</p>
                   </div>
                   <div class="stats compact">
-                    <span>{{ entity.properties?.length || 0 }} property(s)</span>
-                    <span>{{ entity.relationships?.length || 0 }} relation(s)</span>
+                    <span
+                      >{{ entity.properties?.length || 0 }} property(s)</span
+                    >
+                    <span
+                      >{{ entity.relationships?.length || 0 }} relation(s)</span
+                    >
                   </div>
                 </article>
               }
@@ -244,6 +287,21 @@ interface SpringEntity {
         border-bottom: 1px solid #e2e8f0;
         padding: 12px 14px;
       }
+      .table-header-content {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .table-checkbox {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .table-checkbox input {
+        width: 18px;
+        height: 18px;
+        cursor: pointer;
+      }
       .table-card header span,
       .entity-row p,
       .relationship-note,
@@ -312,6 +370,24 @@ interface SpringEntity {
         margin: 0;
         padding: 16px;
       }
+      .selected-tables-action {
+        margin: 15px 0;
+        text-align: center;
+      }
+      .action-button {
+        background: #3b82f6;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        padding: 10px 20px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background-color 0.2s;
+      }
+      .action-button:hover {
+        background: #2563eb;
+      }
       @media (max-width: 760px) {
         .layout {
           flex-direction: column;
@@ -326,17 +402,26 @@ interface SpringEntity {
           flex-direction: column;
         }
       }
-    `
-  ]
+    `,
+  ],
 })
 export class AppComponent {
   private readonly schemaService = inject(SchemaService);
+  private selectedTables = new Set<string>();
 
-  readonly schema = computed(() => this.normalizeSchema(this.schemaService.enrichedSchema()));
+  readonly schema = computed(() =>
+    this.normalizeSchema(this.schemaService.enrichedSchema()),
+  );
   readonly tables = computed(() => this.schema()?.tables || []);
-  readonly entities = computed(() => this.schemaService.springMetadata()?.entities as SpringEntity[] || []);
+  readonly entities = computed(
+    () =>
+      (this.schemaService.springMetadata()?.entities as SpringEntity[]) || [],
+  );
   readonly columnCount = computed(() =>
-    this.tables().reduce((count, table) => count + this.tableColumns(table).length, 0)
+    this.tables().reduce(
+      (count, table) => count + this.tableColumns(table).length,
+      0,
+    ),
   );
   readonly schemaTitle = computed(() => {
     const schema = this.schema();
@@ -348,6 +433,71 @@ export class AppComponent {
     const schema = this.schemaService.enrichedSchema();
     return schema ? JSON.stringify(schema, null, 2) : null;
   });
+  readonly selectedTablesCount = computed(() => this.selectedTables.size);
+
+  readonly getSelectedCount = computed(() => this.selectedTables.size);
+
+  readonly resolveTablePayload = computed(() => {
+    // Get all explicitly selected tables
+    const selectedTables: SchemaTable[] = this.tables().filter((table) =>
+      this.selectedTables.has(this.tableName(table)),
+    );
+
+    // Create a map of all tables for quick lookup
+    const tableMap = new Map<string, SchemaTable>();
+    this.tables().forEach((table) => {
+      const tableName = this.tableName(table);
+      tableMap.set(tableName, table);
+    });
+
+    // Start with selected tables
+    const resultTables = [...selectedTables];
+    const processedTableNames = new Set<string>();
+
+    // Process each selected table to find related tables through foreign keys
+    selectedTables.forEach((selectedTable) => {
+      const tableName = this.tableName(selectedTable);
+      if (processedTableNames.has(tableName)) return;
+
+      // Get foreign key relationships
+      const foreignKeys =
+        selectedTable.foreignKeys || selectedTable.foreign_keys || [];
+
+      // Process each foreign key to find referenced tables
+      foreignKeys.forEach((fk) => {
+        // In a real implementation, we'd need to parse the foreign key structure properly
+        // For now, we'll check if the foreign key has a reference to another table
+        if (fk && typeof fk === 'object') {
+          // If the foreign key has a referenced table property, add it
+          if (
+            'referencedTable' in fk &&
+            typeof fk.referencedTable === 'string'
+          ) {
+            const referencedTableName = fk.referencedTable as string;
+            if (
+              referencedTableName &&
+              !this.selectedTables.has(referencedTableName)
+            ) {
+              const referencedTable = tableMap.get(referencedTableName);
+              if (referencedTable) {
+                resultTables.push(referencedTable);
+              }
+            }
+          }
+        }
+      });
+      processedTableNames.add(tableName);
+    });
+
+    // Remove duplicates by converting to Set and back to array
+    const uniqueTables = Array.from(
+      new Set(resultTables.map((table) => this.tableName(table))),
+    )
+      .map((name) => tableMap.get(name)!)
+      .filter(Boolean);
+
+    return uniqueTables;
+  });
 
   tableName(table: SchemaTable): string {
     return table.name || table.table_name || table.tableName || 'unknown_table';
@@ -358,7 +508,9 @@ export class AppComponent {
   }
 
   columnName(column: SchemaColumn): string {
-    return column.name || column.column_name || column.columnName || 'unknown_column';
+    return (
+      column.name || column.column_name || column.columnName || 'unknown_column'
+    );
   }
 
   columnType(column: SchemaColumn): string {
@@ -375,6 +527,36 @@ export class AppComponent {
 
   foreignKeyCount(table: SchemaTable): number {
     return (table.foreignKeys || table.foreign_keys || []).length;
+  }
+
+  isTableSelected(table: SchemaTable): boolean {
+    const tableName = this.tableName(table);
+    return this.selectedTables.has(tableName);
+  }
+
+  toggleTableSelection(table: SchemaTable): void {
+    console.log('Toggling table selection for:', this.tableName(table));
+    const tableName = this.tableName(table);
+    if (this.selectedTables.has(tableName)) {
+      this.selectedTables.delete(tableName);
+      console.log('Removed table from selection:', tableName);
+      console.log('Current selected tables:', Array.from(this.selectedTables));
+    } else {
+      this.selectedTables.add(tableName);
+      console.log('Added table to selection:', tableName);
+      console.log('Current selected tables:', Array.from(this.selectedTables));
+    }
+  }
+
+  navigateToSelectedTables(): void {
+    // Get the resolved table payload with related tables
+    const payload = this.resolveTablePayload();
+    // In a real implementation, we would navigate to the page builder with the selected tables
+    // For now, we'll just log to console to indicate it's been clicked
+    console.log('Navigating to page builder with tables:', payload);
+
+    // If we had routing set up, we would do something like:
+    // this.router.navigate(['/page-builder'], { state: { tables: payload } });
   }
 
   private normalizeSchema(value: unknown): SchemaPayload | null {
