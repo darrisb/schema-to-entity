@@ -3,7 +3,9 @@ import {
   Component,
   computed,
   inject,
+  signal,
 } from '@angular/core';
+import { PageBuilderComponent } from './page-builder/page-builder.component';
 import { SidebarComponent } from './sidebar/sidebar.component';
 import { SchemaService } from './services/schema.service';
 
@@ -25,8 +27,13 @@ interface SchemaTable {
   tableName?: string;
   columns?: SchemaColumn[];
   fields?: SchemaColumn[];
-  foreignKeys?: unknown[];
-  foreign_keys?: unknown[];
+  foreignKeys?: SchemaForeignKey[];
+  foreign_keys?: SchemaForeignKey[];
+}
+
+interface SchemaForeignKey {
+  referencedTable?: string;
+  referenced_table?: string;
 }
 
 interface SchemaPayload {
@@ -59,12 +66,21 @@ interface SpringEntity {
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [SidebarComponent],
+  imports: [PageBuilderComponent, SidebarComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="layout">
-      <app-sidebar />
-      <main class="content">
+    @if (isPageBuilder()) {
+      <app-page-builder
+        [tables]="resolveTablePayload()"
+        [schemaLabel]="
+          schema()?.schema || schema()?.dialect || schema()?.source || 'schema'
+        "
+        (back)="closePageBuilder()"
+      />
+    } @else {
+      <div class="layout">
+        <app-sidebar />
+        <main class="content">
         <section class="panel">
           <div class="panel-heading">
             <div>
@@ -72,7 +88,6 @@ interface SpringEntity {
               <h1>{{ schemaTitle() }}</h1>
             </div>
 
-            <p>total count is : {{ selectedTablesCount() }}</p>
             @if (tables().length) {
               <div class="stats" aria-label="Schema summary">
                 <span>{{ tables().length }} table(s)</span>
@@ -85,7 +100,7 @@ interface SpringEntity {
                   class="action-button"
                   (click)="navigateToSelectedTables()"
                 >
-                  Edit in Page Builder ({{ getSelectedCount() }} tables
+                  Edit in Page Builder ({{ selectedTablesCount() }} tables
                   selected)
                 </button>
               </div>
@@ -196,8 +211,9 @@ interface SpringEntity {
             <pre>{{ json }}</pre>
           </section>
         }
-      </main>
-    </div>
+        </main>
+      </div>
+    }
   `,
   styles: [
     `
@@ -407,7 +423,8 @@ interface SpringEntity {
 })
 export class AppComponent {
   private readonly schemaService = inject(SchemaService);
-  private selectedTables = new Set<string>();
+  private readonly selectedTables = signal(new Set<string>());
+  readonly isPageBuilder = signal(false);
 
   readonly schema = computed(() =>
     this.normalizeSchema(this.schemaService.enrichedSchema()),
@@ -433,70 +450,39 @@ export class AppComponent {
     const schema = this.schemaService.enrichedSchema();
     return schema ? JSON.stringify(schema, null, 2) : null;
   });
-  readonly selectedTablesCount = computed(() => this.selectedTables.size);
-
-  readonly getSelectedCount = computed(() => this.selectedTables.size);
+  readonly selectedTablesCount = computed(() => this.selectedTables().size);
 
   readonly resolveTablePayload = computed(() => {
-    // Get all explicitly selected tables
-    const selectedTables: SchemaTable[] = this.tables().filter((table) =>
-      this.selectedTables.has(this.tableName(table)),
-    );
-
-    // Create a map of all tables for quick lookup
     const tableMap = new Map<string, SchemaTable>();
     this.tables().forEach((table) => {
-      const tableName = this.tableName(table);
-      tableMap.set(tableName, table);
+      tableMap.set(this.tableName(table), table);
     });
 
-    // Start with selected tables
-    const resultTables = [...selectedTables];
-    const processedTableNames = new Set<string>();
+    const includedNames = new Set<string>();
+    const pendingNames = [...this.selectedTables()];
+    const result: SchemaTable[] = [];
 
-    // Process each selected table to find related tables through foreign keys
-    selectedTables.forEach((selectedTable) => {
-      const tableName = this.tableName(selectedTable);
-      if (processedTableNames.has(tableName)) return;
+    while (pendingNames.length > 0) {
+      const currentName = pendingNames.pop()!;
+      if (includedNames.has(currentName)) continue;
 
-      // Get foreign key relationships
-      const foreignKeys =
-        selectedTable.foreignKeys || selectedTable.foreign_keys || [];
+      const table = tableMap.get(currentName);
+      if (!table) continue;
 
-      // Process each foreign key to find referenced tables
-      foreignKeys.forEach((fk) => {
-        // In a real implementation, we'd need to parse the foreign key structure properly
-        // For now, we'll check if the foreign key has a reference to another table
-        if (fk && typeof fk === 'object') {
-          // If the foreign key has a referenced table property, add it
-          if (
-            'referencedTable' in fk &&
-            typeof fk.referencedTable === 'string'
-          ) {
-            const referencedTableName = fk.referencedTable as string;
-            if (
-              referencedTableName &&
-              !this.selectedTables.has(referencedTableName)
-            ) {
-              const referencedTable = tableMap.get(referencedTableName);
-              if (referencedTable) {
-                resultTables.push(referencedTable);
-              }
-            }
-          }
+      includedNames.add(currentName);
+      result.push(table);
+
+      const foreignKeys = table.foreignKeys || table.foreign_keys || [];
+      for (const foreignKey of foreignKeys) {
+        const referencedTableName =
+          foreignKey.referencedTable || foreignKey.referenced_table;
+        if (referencedTableName && !includedNames.has(referencedTableName)) {
+          pendingNames.push(referencedTableName);
         }
-      });
-      processedTableNames.add(tableName);
-    });
+      }
+    }
 
-    // Remove duplicates by converting to Set and back to array
-    const uniqueTables = Array.from(
-      new Set(resultTables.map((table) => this.tableName(table))),
-    )
-      .map((name) => tableMap.get(name)!)
-      .filter(Boolean);
-
-    return uniqueTables;
+    return result;
   });
 
   tableName(table: SchemaTable): string {
@@ -531,32 +517,28 @@ export class AppComponent {
 
   isTableSelected(table: SchemaTable): boolean {
     const tableName = this.tableName(table);
-    return this.selectedTables.has(tableName);
+    return this.selectedTables().has(tableName);
   }
 
   toggleTableSelection(table: SchemaTable): void {
-    console.log('Toggling table selection for:', this.tableName(table));
     const tableName = this.tableName(table);
-    if (this.selectedTables.has(tableName)) {
-      this.selectedTables.delete(tableName);
-      console.log('Removed table from selection:', tableName);
-      console.log('Current selected tables:', Array.from(this.selectedTables));
-    } else {
-      this.selectedTables.add(tableName);
-      console.log('Added table to selection:', tableName);
-      console.log('Current selected tables:', Array.from(this.selectedTables));
-    }
+    this.selectedTables.update((selectedTables) => {
+      const next = new Set(selectedTables);
+      if (next.has(tableName)) {
+        next.delete(tableName);
+      } else {
+        next.add(tableName);
+      }
+      return next;
+    });
   }
 
   navigateToSelectedTables(): void {
-    // Get the resolved table payload with related tables
-    const payload = this.resolveTablePayload();
-    // In a real implementation, we would navigate to the page builder with the selected tables
-    // For now, we'll just log to console to indicate it's been clicked
-    console.log('Navigating to page builder with tables:', payload);
+    this.isPageBuilder.set(true);
+  }
 
-    // If we had routing set up, we would do something like:
-    // this.router.navigate(['/page-builder'], { state: { tables: payload } });
+  closePageBuilder(): void {
+    this.isPageBuilder.set(false);
   }
 
   private normalizeSchema(value: unknown): SchemaPayload | null {
