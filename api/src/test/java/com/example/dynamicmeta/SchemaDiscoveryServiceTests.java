@@ -4,22 +4,38 @@ import com.example.dynamicmeta.connection.ConnectionPolicy;
 import com.example.dynamicmeta.connection.JdbcConnectionFactory;
 import org.h2.jdbcx.JdbcDataSource;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.boot.test.context.runner.WebApplicationContextRunner;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
+import java.sql.DatabaseMetaData;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.when;
 
+@ExtendWith(MockitoExtension.class)
 class SchemaDiscoveryServiceTests {
 
     private static final ConnectionPolicy DEFAULT_POLICY = new ConnectionPolicy(List.of(), false);
+
+    @Mock private Connection connection;
+    @Mock private DatabaseMetaData metadata;
+    @Mock private ResultSet tableTypes;
+    @Mock private ResultSet tables;
+    @Mock private ResultSet columns;
 
     @Test
     void discoversTheContainingApplicationsDataSource() throws Exception {
@@ -101,6 +117,55 @@ class SchemaDiscoveryServiceTests {
         List<Map<String, Object>> tables = (List<Map<String, Object>>) result.get("tables");
         assertThat(tables).extracting(table -> table.get("name")).containsExactly("CUSTOMER_NAMES");
         assertThat(tables.getFirst()).containsEntry("kind", "view");
+    }
+
+    @Test
+    void recordsBaseTablesForViewsButNotForTables() throws Exception {
+        JdbcDataSource dataSource = dataSource("view_dependencies");
+        createSchemaWithView(dataSource);
+        SchemaDiscoveryService service = new SchemaDiscoveryService(
+                dataSource, new SchemaToEntityProperties(), DEFAULT_POLICY, factory());
+
+        Map<String, Object> result = service.discover("PUBLIC", List.of());
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> tables = (List<Map<String, Object>>) result.get("tables");
+        Map<String, Object> customers = tableNamed(tables, "CUSTOMERS");
+        assertThat(customers).doesNotContainKey("baseTables");
+
+        Map<String, Object> view = tableNamed(tables, "CUSTOMER_NAMES");
+        assertThat(view).containsEntry("kind", "view");
+        // H2 has no information_schema.view_table_usage, so discovery succeeds with no base tables.
+        assertThat(view.get("baseTables")).isEqualTo(List.of());
+    }
+
+    @Test
+    void discoveryStillSucceedsWhenTheViewDependencyQueryFails() throws Exception {
+        when(connection.getMetaData()).thenReturn(metadata);
+        when(metadata.getDatabaseProductName()).thenReturn("PostgreSQL");
+        when(connection.getCatalog()).thenReturn("mydb");
+        when(connection.getSchema()).thenReturn("public");
+        when(metadata.getTableTypes()).thenReturn(tableTypes);
+        when(tableTypes.next()).thenReturn(true, false);
+        when(tableTypes.getString("TABLE_TYPE")).thenReturn("TABLE");
+        when(metadata.getTables(any(), any(), any(), any())).thenReturn(tables);
+        when(tables.next()).thenReturn(true, false);
+        when(tables.getString("TABLE_NAME")).thenReturn("customer_names");
+        when(tables.getString("TABLE_TYPE")).thenReturn("VIEW");
+        when(metadata.getColumns(any(), any(), any(), any())).thenReturn(columns);
+        when(columns.next()).thenReturn(false);
+        when(connection.prepareStatement(anyString()))
+                .thenThrow(new SQLException("permission denied"));
+        SchemaDiscoveryService service = new SchemaDiscoveryService(
+                null, new SchemaToEntityProperties(), DEFAULT_POLICY, factory());
+
+        Map<String, Object> result = service.inspect(connection, "public", List.of());
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> discovered = (List<Map<String, Object>>) result.get("tables");
+        Map<String, Object> view = tableNamed(discovered, "customer_names");
+        assertThat(view).containsEntry("kind", "view");
+        assertThat(view.get("baseTables")).isEqualTo(List.of());
     }
 
     @Test

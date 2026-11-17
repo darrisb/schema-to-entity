@@ -10,6 +10,7 @@ import com.example.dynamicmeta.connection.NamespaceResolver;
 import com.example.dynamicmeta.connection.ParsedConnection;
 import com.example.dynamicmeta.connection.SecretRedactor;
 import com.example.dynamicmeta.connection.UnsupportedDatabaseException;
+import com.example.dynamicmeta.connection.ViewDependencyReader;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -210,6 +211,16 @@ public class SchemaDiscoveryService {
             }
         }
         tables.sort(Comparator.comparing(table -> (String) table.get("name"), String.CASE_INSENSITIVE_ORDER));
+
+        if (tables.stream().anyMatch(table -> "view".equals(table.get("kind")))) {
+            Map<String, List<String>> viewDependencies =
+                    new ViewDependencyReader().read(dbType, connection, catalog, schema);
+            for (Map<String, Object> table : tables) {
+                if ("view".equals(table.get("kind"))) {
+                    table.put("baseTables", viewDependencies.getOrDefault((String) table.get("name"), List.of()));
+                }
+            }
+        }
 
         String dialect = dialect(metadata.getDatabaseProductName());
         Map<String, Object> result = new LinkedHashMap<>();
