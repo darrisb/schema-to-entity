@@ -212,11 +212,11 @@ public class SchemaDiscoveryService {
         }
         tables.sort(Comparator.comparing(table -> (String) table.get("name"), String.CASE_INSENSITIVE_ORDER));
 
-        if (tables.stream().anyMatch(table -> "view".equals(table.get("kind")))) {
+        if (tables.stream().anyMatch(table -> isView((String) table.get("kind")))) {
             Map<String, List<String>> viewDependencies =
                     new ViewDependencyReader().read(dbType, connection, catalog, schema);
             for (Map<String, Object> table : tables) {
-                if ("view".equals(table.get("kind"))) {
+                if (isView((String) table.get("kind"))) {
                     table.put("baseTables", viewDependencies.getOrDefault((String) table.get("name"), List.of()));
                 }
             }
@@ -343,6 +343,11 @@ public class SchemaDiscoveryService {
             }
         }
         return null;
+    }
+
+    /** Returns true for both plain and materialized view objects. */
+    private static boolean isView(String kind) {
+        return "view".equals(kind) || "materialized-view".equals(kind);
     }
 
     /** Maps a driver TABLE_TYPE value to the kind tag recorded for the object. */

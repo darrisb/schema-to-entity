@@ -14,6 +14,7 @@ import org.springframework.boot.test.context.runner.WebApplicationContextRunner;
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -36,6 +37,10 @@ class SchemaDiscoveryServiceTests {
     @Mock private ResultSet tableTypes;
     @Mock private ResultSet tables;
     @Mock private ResultSet columns;
+    @Mock private PreparedStatement statement;
+    @Mock private ResultSet dependencies;
+    @Mock private ResultSet primaryKeys;
+    @Mock private ResultSet importedKeys;
 
     @Test
     void discoversTheContainingApplicationsDataSource() throws Exception {
@@ -166,6 +171,77 @@ class SchemaDiscoveryServiceTests {
         Map<String, Object> view = tableNamed(discovered, "customer_names");
         assertThat(view).containsEntry("kind", "view");
         assertThat(view.get("baseTables")).isEqualTo(List.of());
+    }
+
+    @Test
+    void attachesCatalogBaseTablesToTheViewAndLeavesTablesWithoutTheKey() throws Exception {
+        when(connection.getMetaData()).thenReturn(metadata);
+        when(metadata.getDatabaseProductName()).thenReturn("PostgreSQL");
+        when(connection.getCatalog()).thenReturn("mydb");
+        when(metadata.getTableTypes()).thenReturn(tableTypes);
+        when(tableTypes.next()).thenReturn(true, false);
+        when(tableTypes.getString("TABLE_TYPE")).thenReturn("TABLE");
+        when(metadata.getTables(any(), any(), any(), any())).thenReturn(tables);
+        when(tables.next()).thenReturn(true, true, false);
+        when(tables.getString("TABLE_NAME")).thenReturn("customer_names", "customers");
+        when(tables.getString("TABLE_TYPE")).thenReturn("VIEW", "TABLE");
+        when(metadata.getColumns(any(), any(), any(), any())).thenReturn(columns);
+        when(columns.next()).thenReturn(false);
+        when(metadata.getPrimaryKeys(any(), any(), any())).thenReturn(primaryKeys);
+        when(primaryKeys.next()).thenReturn(false);
+        when(metadata.getImportedKeys(any(), any(), any())).thenReturn(importedKeys);
+        when(importedKeys.next()).thenReturn(false);
+        when(connection.prepareStatement(anyString())).thenReturn(statement);
+        when(statement.executeQuery()).thenReturn(dependencies);
+        when(dependencies.next()).thenReturn(true, false);
+        when(dependencies.getString("view_name")).thenReturn("customer_names");
+        when(dependencies.getString("table_name")).thenReturn("customers");
+
+        SchemaDiscoveryService service = new SchemaDiscoveryService(
+                null, new SchemaToEntityProperties(), DEFAULT_POLICY, factory());
+
+        Map<String, Object> result = service.inspect(connection, "public", List.of());
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> discovered = (List<Map<String, Object>>) result.get("tables");
+        Map<String, Object> view = tableNamed(discovered, "customer_names");
+        assertThat(view).containsEntry("kind", "view");
+        assertThat(view.get("baseTables")).isEqualTo(List.of("customers"));
+
+        Map<String, Object> customers = tableNamed(discovered, "customers");
+        assertThat(customers).doesNotContainKey("baseTables");
+    }
+
+    @Test
+    void attachesCatalogBaseTablesToMaterializedViews() throws Exception {
+        when(connection.getMetaData()).thenReturn(metadata);
+        when(metadata.getDatabaseProductName()).thenReturn("PostgreSQL");
+        when(connection.getCatalog()).thenReturn("mydb");
+        when(metadata.getTableTypes()).thenReturn(tableTypes);
+        when(tableTypes.next()).thenReturn(true, false);
+        when(tableTypes.getString("TABLE_TYPE")).thenReturn("TABLE");
+        when(metadata.getTables(any(), any(), any(), any())).thenReturn(tables);
+        when(tables.next()).thenReturn(true, false);
+        when(tables.getString("TABLE_NAME")).thenReturn("customer_names");
+        when(tables.getString("TABLE_TYPE")).thenReturn("MATERIALIZED VIEW");
+        when(metadata.getColumns(any(), any(), any(), any())).thenReturn(columns);
+        when(columns.next()).thenReturn(false);
+        when(connection.prepareStatement(anyString())).thenReturn(statement);
+        when(statement.executeQuery()).thenReturn(dependencies);
+        when(dependencies.next()).thenReturn(true, false);
+        when(dependencies.getString("view_name")).thenReturn("customer_names");
+        when(dependencies.getString("table_name")).thenReturn("customers");
+
+        SchemaDiscoveryService service = new SchemaDiscoveryService(
+                null, new SchemaToEntityProperties(), DEFAULT_POLICY, factory());
+
+        Map<String, Object> result = service.inspect(connection, "public", List.of());
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> discovered = (List<Map<String, Object>>) result.get("tables");
+        Map<String, Object> view = tableNamed(discovered, "customer_names");
+        assertThat(view).containsEntry("kind", "materialized-view");
+        assertThat(view.get("baseTables")).isEqualTo(List.of("customers"));
     }
 
     @Test
