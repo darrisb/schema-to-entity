@@ -215,11 +215,19 @@ public class SchemaDiscoveryService {
         if (tables.stream().anyMatch(table -> isView((String) table.get("kind")))) {
             Map<String, List<String>> viewDependencies =
                     new ViewDependencyReader().read(dbType, connection, catalog, schema);
+            // Catalog view names and JDBC metadata names can differ in case, so match them
+            // case-insensitively before inferring relationships from the base tables.
+            Map<String, List<String>> dependenciesByLowerCaseName = new LinkedHashMap<>();
+            for (Map.Entry<String, List<String>> entry : viewDependencies.entrySet()) {
+                dependenciesByLowerCaseName.put(entry.getKey().toLowerCase(Locale.ROOT), entry.getValue());
+            }
             for (Map<String, Object> table : tables) {
                 if (isView((String) table.get("kind"))) {
-                    table.put("baseTables", viewDependencies.getOrDefault((String) table.get("name"), List.of()));
+                    table.put("baseTables", dependenciesByLowerCaseName.getOrDefault(
+                            ((String) table.get("name")).toLowerCase(Locale.ROOT), List.of()));
                 }
             }
+            inferViewForeignKeys(tables);
         }
 
         String dialect = dialect(metadata.getDatabaseProductName());
@@ -289,6 +297,94 @@ public class SchemaDiscoveryService {
             result.put("primaryKey", keys.size() == 1 ? keys.getFirst() : keys);
         }
         return result;
+    }
+
+    /**
+     * Infers view foreign keys from the declared foreign keys of each view's base tables.
+     * A view column whose name matches a base-table foreign key column (case-insensitively)
+     * receives a copy of that foreign key marked with {@code "origin": "inferred"}. A match
+     * is skipped when two base tables declare foreign keys on the same column that reference
+     * different tables. Declared table foreign keys are never modified.
+     */
+    private static void inferViewForeignKeys(List<Map<String, Object>> tables) {
+        for (Map<String, Object> view : tables) {
+            if (!isView((String) view.get("kind"))) {
+                continue;
+            }
+            if (!(view.get("baseTables") instanceof List<?> baseTables) || baseTables.isEmpty()) {
+                continue;
+            }
+            List<Map<String, Object>> viewColumns = mapsIn(view.get("columns"));
+            if (viewColumns.isEmpty()) {
+                continue;
+            }
+
+            List<Map<String, Object>> inferred = new ArrayList<>(mapsIn(view.get("foreignKeys")));
+            for (Map<String, Object> column : viewColumns) {
+                if (!(column.get("name") instanceof String columnName)) {
+                    continue;
+                }
+                Map<String, Object> match = null;
+                String referencedTable = null;
+                boolean ambiguous = false;
+                for (Object baseTableValue : baseTables) {
+                    if (!(baseTableValue instanceof String baseTableName)) {
+                        continue;
+                    }
+                    Map<String, Object> baseTable = tableByName(tables, baseTableName);
+                    if (baseTable == null || !"table".equals(baseTable.get("kind"))) {
+                        continue;
+                    }
+                    for (Map<String, Object> foreignKey : mapsIn(baseTable.get("foreignKeys"))) {
+                        if (!(foreignKey.get("column") instanceof String foreignKeyColumn)
+                                || !foreignKeyColumn.equalsIgnoreCase(columnName)) {
+                            continue;
+                        }
+                        String referenced = foreignKey.get("referencedTable") instanceof String value
+                                ? value : null;
+                        if (referencedTable == null) {
+                            referencedTable = referenced;
+                            match = foreignKey;
+                        } else if (referenced != null && !referencedTable.equalsIgnoreCase(referenced)) {
+                            ambiguous = true;
+                        }
+                    }
+                }
+                if (ambiguous || match == null) {
+                    continue;
+                }
+                Map<String, Object> copy = new LinkedHashMap<>(match);
+                copy.put("origin", "inferred");
+                inferred.add(copy);
+            }
+            view.put("foreignKeys", inferred);
+        }
+    }
+
+    /** Returns the map entries of a list value, or an empty list when the value is not a list. */
+    private static List<Map<String, Object>> mapsIn(Object value) {
+        if (!(value instanceof List<?> list)) {
+            return List.of();
+        }
+        List<Map<String, Object>> maps = new ArrayList<>(list.size());
+        for (Object item : list) {
+            if (item instanceof Map<?, ?> map) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> typed = (Map<String, Object>) map;
+                maps.add(typed);
+            }
+        }
+        return maps;
+    }
+
+    /** Finds a discovered object by name, ignoring case. */
+    private static Map<String, Object> tableByName(List<Map<String, Object>> tables, String name) {
+        for (Map<String, Object> table : tables) {
+            if (table.get("name") instanceof String tableName && tableName.equalsIgnoreCase(name)) {
+                return table;
+            }
+        }
+        return null;
     }
 
     /**
