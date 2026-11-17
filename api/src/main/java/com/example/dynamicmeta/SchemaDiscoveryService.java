@@ -3,6 +3,7 @@ package com.example.dynamicmeta;
 import com.example.dynamicmeta.connection.ConnectionRejectedException;
 import com.example.dynamicmeta.connection.ConnectionStringParser;
 import com.example.dynamicmeta.connection.ParsedConnection;
+import com.example.dynamicmeta.connection.UnsupportedDatabaseException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -70,12 +71,18 @@ public class SchemaDiscoveryService {
             throw new ConnectionRejectedException("Explicit database connections are disabled");
         }
         ParsedConnection parsed = new ConnectionStringParser().parse(request.connectionString());
+        String expectedDriver = parsed.databaseType().getDriverClassName();
         if (request.driverClassName() != null && !request.driverClassName().isBlank()) {
-            try {
-                Class.forName(request.driverClassName());
-            } catch (ClassNotFoundException e) {
-                throw new IllegalArgumentException("JDBC driver was not found: " + request.driverClassName(), e);
+            if (!expectedDriver.equals(request.driverClassName())) {
+                throw new IllegalArgumentException(
+                        "Unexpected driver class name: expected " + expectedDriver +
+                        " for " + parsed.databaseType().id());
             }
+        }
+        if (!driverAvailable(expectedDriver)) {
+            throw new UnsupportedDatabaseException(
+                    "JDBC driver " + expectedDriver + " is not on the classpath. " +
+                    "Add the required JDBC driver as a dependency.");
         }
         Properties connectionProperties = new Properties();
         putIfPresent(connectionProperties, "user", firstNonBlank(request.username(), parsed.username()));
@@ -213,6 +220,15 @@ public class SchemaDiscoveryService {
 
     private static List<String> safeTables(List<String> tables) {
         return tables == null ? List.of() : tables;
+    }
+
+    private static boolean driverAvailable(String driverClassName) {
+        try {
+            Class.forName(driverClassName);
+            return true;
+        } catch (ClassNotFoundException e) {
+            return false;
+        }
     }
 
     public record ConnectionRequest(
