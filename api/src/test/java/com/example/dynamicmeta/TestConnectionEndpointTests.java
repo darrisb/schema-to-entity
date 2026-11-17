@@ -28,6 +28,7 @@ class TestConnectionEndpointTests {
         createMinimalSchema(ds);
 
         SchemaToEntityProperties props = new SchemaToEntityProperties();
+        props.setExplicitConnectionsEnabled(true);
         props.setAllowEmbeddedDatabases(true);
         SchemaDiscoveryService service = new SchemaDiscoveryService(
                 ds, props, ALLOW_EMBEDDED, factory());
@@ -81,6 +82,7 @@ class TestConnectionEndpointTests {
         };
 
         SchemaToEntityProperties props = new SchemaToEntityProperties();
+        props.setExplicitConnectionsEnabled(true);
         props.setAllowEmbeddedDatabases(true);
         SchemaDiscoveryService service = new SchemaDiscoveryService(
                 ds, props, ALLOW_EMBEDDED, slowFactory);
@@ -119,6 +121,7 @@ class TestConnectionEndpointTests {
         createMinimalSchema(ds);
 
         SchemaToEntityProperties props = new SchemaToEntityProperties();
+        props.setExplicitConnectionsEnabled(true);
         props.setAllowEmbeddedDatabases(true);
         SchemaDiscoveryService service = new SchemaDiscoveryService(
                 ds, props, ALLOW_EMBEDDED, factory());

@@ -10,7 +10,12 @@ public class SchemaToEntityProperties {
 
     private boolean enabled = true;
     private boolean webEnabled = true;
-    private boolean explicitConnectionsEnabled = true;
+    /**
+     * Off by default: explicit connections let callers submit database addresses and
+     * credentials. Host applications must opt in, and production should keep this off
+     * or put the endpoint behind authentication and authorization.
+     */
+    private boolean explicitConnectionsEnabled = false;
     private String schema;
     private List<String> allowedHosts = List.of();
     private boolean allowEmbeddedDatabases = false;

@@ -56,6 +56,7 @@ class ExplicitConnectionLimitTests {
         };
 
         SchemaToEntityProperties props = new SchemaToEntityProperties();
+        props.setExplicitConnectionsEnabled(true);
         props.setAllowEmbeddedDatabases(true);
         props.setMaxConcurrentExplicitConnections(1);
 
@@ -129,6 +130,7 @@ class ExplicitConnectionLimitTests {
         };
 
         SchemaToEntityProperties props = new SchemaToEntityProperties();
+        props.setExplicitConnectionsEnabled(true);
         props.setAllowEmbeddedDatabases(true);
         props.setMaxConcurrentExplicitConnections(1);
 

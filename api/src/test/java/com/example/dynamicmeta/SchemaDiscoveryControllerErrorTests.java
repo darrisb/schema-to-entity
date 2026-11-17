@@ -40,7 +40,9 @@ class SchemaDiscoveryControllerErrorTests {
     }
 
     private static SchemaDiscoveryService service() {
-        return new SchemaDiscoveryService(stubDataSource(), new SchemaToEntityProperties(),
+        SchemaToEntityProperties properties = new SchemaToEntityProperties();
+        properties.setExplicitConnectionsEnabled(true);
+        return new SchemaDiscoveryService(stubDataSource(), properties,
                 new ConnectionPolicy(List.of(), true), factory());
     }
 
@@ -156,8 +158,10 @@ class SchemaDiscoveryControllerErrorTests {
                         "Driver refused to connect to postgres://user:pass123@host/db");
             }
         };
+        SchemaToEntityProperties properties = new SchemaToEntityProperties();
+        properties.setExplicitConnectionsEnabled(true);
         SchemaDiscoveryService service = new SchemaDiscoveryService(
-                stubDataSource(), new SchemaToEntityProperties(),
+                stubDataSource(), properties,
                 new ConnectionPolicy(List.of(), true), failingFactory);
         SchemaDiscoveryController controller = new SchemaDiscoveryController(service, transformer());
         MockMvc mockMvc = MockMvcBuilders.standaloneSetup(controller).build();

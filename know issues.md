@@ -93,14 +93,15 @@ change repeatedly.
 
 **Impact:** `POST /api/schema/extract-postgres` accepts a caller-supplied connection
 string with credentials and opens it. It is reachable through the UI's nginx proxy with no
-authentication. `schema-to-entity.explicit-connections-enabled` can disable it, but is
-`true` by default and set that way in `demo/src/main/resources/application.yml`.
+authentication. `schema-to-entity.explicit-connections-enabled` disables it and now
+defaults to `false` (FX-008), but `demo/src/main/resources/application.yml` still sets it
+to `true` for local development, so the demo endpoint remains exposed when unauthenticated.
 
 **Mitigations in place:**
 
 | Control | Setting / Mechanism | Default |
 |---|---|---|
-| Toggle | `schema-to-entity.explicit-connections-enabled` | `true` (set `false` in production unless behind auth) |
+| Toggle | `schema-to-entity.explicit-connections-enabled` | `false` (demo sets `true` for local development; keep off or behind auth in production) |
 | Host allowlist | `schema-to-entity.allowed-hosts` (exact + `*` wildcard patterns) | `[]` (any host) |
 | URL parameter allowlist | Hard-coded in `ConnectionPolicy` (JDBC-specific params only) | — |
 | Embedded DB rule | `schema-to-entity.allow-embedded-databases` blocks H2 `mem:`/`file:` etc. | `false` |

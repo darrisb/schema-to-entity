@@ -82,11 +82,14 @@ The generic alias `POST /api/schema/extract` also accepts a JDBC URL. `username`
 schema-to-entity:
   enabled: true
   web-enabled: true
-  explicit-connections-enabled: true
+  # Off by default. See the security note below.
+  explicit-connections-enabled: false
   schema: public
 ```
 
-Set `web-enabled: false` to use only the Java service. In production, set `explicit-connections-enabled: false` unless users must be allowed to submit database addresses and credentials.
+Set `web-enabled: false` to use only the Java service.
+
+**Security:** explicit connections are **disabled by default** (`explicit-connections-enabled: false`). They let any caller submit database addresses and credentials, so the endpoint has no authentication of its own. Opt in with `explicit-connections-enabled: true` only for local development, or when the endpoint is protected by authentication and authorization. Outside local development it must stay off, or be behind authentication.
 
 ## Connection layer
 

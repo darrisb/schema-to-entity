@@ -22,9 +22,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class DriverValidationTests {
 
     private static SchemaDiscoveryService service() {
-        // explicitConnectionsEnabled defaults to true
+        SchemaToEntityProperties properties = new SchemaToEntityProperties();
+        properties.setExplicitConnectionsEnabled(true);
         return new SchemaDiscoveryService(
-                new JdbcDataSource(), new SchemaToEntityProperties(),
+                new JdbcDataSource(), properties,
                 new ConnectionPolicy(List.of(), true),
                 new JdbcConnectionFactory(Duration.ZERO, Duration.ZERO));
     }

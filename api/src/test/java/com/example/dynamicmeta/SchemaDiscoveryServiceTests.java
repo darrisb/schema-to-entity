@@ -47,6 +47,7 @@ class SchemaDiscoveryServiceTests {
         JdbcDataSource external = dataSource("discovery_external");
         createSchema(external);
         SchemaToEntityProperties props = new SchemaToEntityProperties();
+        props.setExplicitConnectionsEnabled(true);
         props.setAllowEmbeddedDatabases(true);
         SchemaDiscoveryService service = new SchemaDiscoveryService(
                 host, props, new ConnectionPolicy(List.of(), true), factory());
