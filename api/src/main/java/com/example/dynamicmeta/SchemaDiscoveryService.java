@@ -4,7 +4,9 @@ import com.example.dynamicmeta.connection.ConnectionBusyException;
 import com.example.dynamicmeta.connection.ConnectionPolicy;
 import com.example.dynamicmeta.connection.ConnectionRejectedException;
 import com.example.dynamicmeta.connection.ConnectionStringParser;
+import com.example.dynamicmeta.connection.DatabaseType;
 import com.example.dynamicmeta.connection.JdbcConnectionFactory;
+import com.example.dynamicmeta.connection.NamespaceResolver;
 import com.example.dynamicmeta.connection.ParsedConnection;
 import com.example.dynamicmeta.connection.UnsupportedDatabaseException;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -164,21 +166,28 @@ public class SchemaDiscoveryService {
 
     Map<String, Object> inspect(Connection connection, String requestedSchema, List<String> tableFilter)
             throws SQLException {
+        NamespaceResolver.validateTableFilterSize(tableFilter);
+
         DatabaseMetaData metadata = connection.getMetaData();
-        String schema = firstNonBlank(requestedSchema, connection.getSchema());
+        DatabaseType dbType = NamespaceResolver.fromConnection(connection);
+        NamespaceResolver.ResolvedNamespace ns = new NamespaceResolver()
+                .resolve(dbType, connection, requestedSchema);
+
+        String schema = ns.schemaPattern();
+        String catalog = ns.catalog();
         Set<String> filter = new LinkedHashSet<>();
         for (String table : safeTables(tableFilter)) {
             filter.add(table.toLowerCase(Locale.ROOT));
         }
 
         List<Map<String, Object>> tables = new ArrayList<>();
-        try (ResultSet rs = metadata.getTables(connection.getCatalog(), schema, "%", new String[]{"TABLE"})) {
+        try (ResultSet rs = metadata.getTables(catalog, schema, "%", new String[]{"TABLE"})) {
             while (rs.next()) {
                 String name = rs.getString("TABLE_NAME");
                 if (!filter.isEmpty() && !filter.contains(name.toLowerCase(Locale.ROOT))) {
                     continue;
                 }
-                tables.add(readTable(metadata, connection.getCatalog(), schema, name));
+                tables.add(readTable(metadata, catalog, schema, name));
             }
         }
         tables.sort(Comparator.comparing(table -> (String) table.get("name"), String.CASE_INSENSITIVE_ORDER));
@@ -187,6 +196,7 @@ public class SchemaDiscoveryService {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("source", dialect);
         result.put("dialect", dialect);
+        result.put("catalog", catalog);
         result.put("schema", schema);
         result.put("extractedAt", Instant.now().toString());
         result.put("tables", tables);

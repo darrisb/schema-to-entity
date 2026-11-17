@@ -1,6 +1,7 @@
 {
   "source": "postgresql",
   "dialect": "postgresql",
+  "catalog": null,
   "schema": "public",
   "extractedAt": "2026-01-01T00:00:00Z",
   "tables": [
