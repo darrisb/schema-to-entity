@@ -12,6 +12,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import com.example.dynamicmeta.connection.ConnectionPolicy;
+import com.example.dynamicmeta.connection.JdbcConnectionFactory;
 
 import javax.sql.DataSource;
 
@@ -32,11 +33,20 @@ public class SchemaToEntityAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
+    JdbcConnectionFactory jdbcConnectionFactory(SchemaToEntityProperties properties) {
+        return new JdbcConnectionFactory(
+                properties.getConnectTimeout(),
+                properties.getSocketTimeout());
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
     SchemaDiscoveryService schemaDiscoveryService(
             DataSource dataSource,
             SchemaToEntityProperties properties,
-            ConnectionPolicy policy) {
-        return new SchemaDiscoveryService(dataSource, properties, policy);
+            ConnectionPolicy policy,
+            JdbcConnectionFactory jdbcConnectionFactory) {
+        return new SchemaDiscoveryService(dataSource, properties, policy, jdbcConnectionFactory);
     }
 
     @Bean

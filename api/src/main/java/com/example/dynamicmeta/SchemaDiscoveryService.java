@@ -3,6 +3,7 @@ package com.example.dynamicmeta;
 import com.example.dynamicmeta.connection.ConnectionPolicy;
 import com.example.dynamicmeta.connection.ConnectionRejectedException;
 import com.example.dynamicmeta.connection.ConnectionStringParser;
+import com.example.dynamicmeta.connection.JdbcConnectionFactory;
 import com.example.dynamicmeta.connection.ParsedConnection;
 import com.example.dynamicmeta.connection.UnsupportedDatabaseException;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -37,13 +38,23 @@ public class SchemaDiscoveryService {
     private final DataSource dataSource;
     private final SchemaToEntityProperties properties;
     private final ConnectionPolicy policy;
+    private final JdbcConnectionFactory jdbcConnectionFactory;
 
+    /** Constructor for existing tests that do not require explicit connections. */
     public SchemaDiscoveryService(DataSource dataSource,
                                   SchemaToEntityProperties properties,
                                   ConnectionPolicy policy) {
+        this(dataSource, properties, policy, null);
+    }
+
+    public SchemaDiscoveryService(DataSource dataSource,
+                                  SchemaToEntityProperties properties,
+                                  ConnectionPolicy policy,
+                                  JdbcConnectionFactory jdbcConnectionFactory) {
         this.dataSource = dataSource;
         this.properties = properties;
         this.policy = policy;
+        this.jdbcConnectionFactory = jdbcConnectionFactory;
     }
 
     /** Returns a fixed schema so the API can be demonstrated without a database. */
@@ -90,16 +101,38 @@ public class SchemaDiscoveryService {
                     "JDBC driver " + expectedDriver + " is not on the classpath. " +
                     "Add the required JDBC driver as a dependency.");
         }
+
+        Connection connection;
+        if (jdbcConnectionFactory != null) {
+            connection = jdbcConnectionFactory.open(parsed,
+                    request.username(), request.password(), request.ssl());
+        } else {
+            // Fallback for tests that don't supply a factory.
+            connection = openConnectionDirectly(parsed, request);
+        }
+
+        try {
+            return inspect(connection, firstNonBlank(request.schemaName(), properties.getSchema()),
+                    safeTables(request.tables()));
+        } finally {
+            try {
+                connection.close();
+            } catch (SQLException ignored) {
+            }
+        }
+    }
+
+    private static Connection openConnectionDirectly(ParsedConnection parsed,
+                                                    ConnectionRequest request) throws SQLException {
         Properties connectionProperties = new Properties();
-        putIfPresent(connectionProperties, "user", firstNonBlank(request.username(), parsed.username()));
-        putIfPresent(connectionProperties, "password", firstNonBlank(request.password(), parsed.password()));
+        putIfPresent(connectionProperties, "user",
+                firstNonBlank(request.username(), parsed.username()));
+        putIfPresent(connectionProperties, "password",
+                firstNonBlank(request.password(), parsed.password()));
         if (Boolean.TRUE.equals(request.ssl())) {
             connectionProperties.setProperty("sslmode", "require");
         }
-        try (Connection connection = DriverManager.getConnection(parsed.jdbcUrl(), connectionProperties)) {
-            return inspect(connection, firstNonBlank(request.schemaName(), properties.getSchema()),
-                    safeTables(request.tables()));
-        }
+        return DriverManager.getConnection(parsed.jdbcUrl(), connectionProperties);
     }
 
     Map<String, Object> inspect(Connection connection, String requestedSchema, List<String> tableFilter)

@@ -1,5 +1,6 @@
 package com.example.dynamicmeta;
 
+import java.time.Duration;
 import java.util.List;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -13,6 +14,8 @@ public class SchemaToEntityProperties {
     private String schema;
     private List<String> allowedHosts = List.of();
     private boolean allowEmbeddedDatabases = false;
+    private Duration connectTimeout = Duration.ofSeconds(10);
+    private Duration socketTimeout = Duration.ofSeconds(60);
 
     public boolean isEnabled() {
         return enabled;
@@ -60,5 +63,21 @@ public class SchemaToEntityProperties {
 
     public void setAllowEmbeddedDatabases(boolean allowEmbeddedDatabases) {
         this.allowEmbeddedDatabases = allowEmbeddedDatabases;
+    }
+
+    public Duration getConnectTimeout() {
+        return connectTimeout;
+    }
+
+    public void setConnectTimeout(Duration connectTimeout) {
+        this.connectTimeout = connectTimeout;
+    }
+
+    public Duration getSocketTimeout() {
+        return socketTimeout;
+    }
+
+    public void setSocketTimeout(Duration socketTimeout) {
+        this.socketTimeout = socketTimeout;
     }
 }
