@@ -1,0 +1,320 @@
+package com.example.dynamicmeta.connection;
+
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.NullSource;
+import org.junit.jupiter.params.provider.EmptySource;
+import org.junit.jupiter.params.provider.ValueSource;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+class ConnectionStringParserTests {
+
+    private final ConnectionStringParser parser = new ConnectionStringParser();
+
+    // -----------------------------------------------------------------
+    // JDBC URLs — PostgreSQL
+    // -----------------------------------------------------------------
+
+    @Test
+    void parsesPostgresJdbcWithHostPortDatabase() {
+        ParsedConnection p = parser.parse("jdbc:postgresql://dbhost:5432/appdb");
+        assertThat(p.databaseType()).isEqualTo(DatabaseType.POSTGRESQL);
+        assertThat(p.jdbcUrl()).isEqualTo("jdbc:postgresql://dbhost:5432/appdb");
+        assertThat(p.host()).isEqualTo("dbhost");
+        assertThat(p.port()).isEqualTo(5432);
+        assertThat(p.database()).isEqualTo("appdb");
+        assertThat(p.username()).isNull();
+        assertThat(p.password()).isNull();
+    }
+
+    @Test
+    void parsesPostgresJdbcWithQueryParams() {
+        ParsedConnection p = parser.parse("jdbc:postgresql://localhost:5432/testdb?ssl=true&connectTimeout=10");
+        assertThat(p.host()).isEqualTo("localhost");
+        assertThat(p.port()).isEqualTo(5432);
+        assertThat(p.database()).isEqualTo("testdb");
+        assertThat(p.parameters()).containsEntry("ssl", "true").containsEntry("connectTimeout", "10");
+    }
+
+    @Test
+    void parsesPostgresJdbcWithNoPort() {
+        ParsedConnection p = parser.parse("jdbc:postgresql://localhost/mydb");
+        assertThat(p.host()).isEqualTo("localhost");
+        assertThat(p.port()).isNull();
+        assertThat(p.database()).isEqualTo("mydb");
+    }
+
+    // -----------------------------------------------------------------
+    // JDBC URLs — MySQL
+    // -----------------------------------------------------------------
+
+    @Test
+    void parsesMySqlJdbc() {
+        ParsedConnection p = parser.parse("jdbc:mysql://mysql-host:3306/sales?useSSL=false");
+        assertThat(p.databaseType()).isEqualTo(DatabaseType.MYSQL);
+        assertThat(p.host()).isEqualTo("mysql-host");
+        assertThat(p.port()).isEqualTo(3306);
+        assertThat(p.database()).isEqualTo("sales");
+        assertThat(p.parameters()).containsEntry("useSSL", "false");
+    }
+
+    @Test
+    void parsesMySqlJdbcNoPortNoDatabase() {
+        ParsedConnection p = parser.parse("jdbc:mysql://mysql-host");
+        assertThat(p.host()).isEqualTo("mysql-host");
+        assertThat(p.port()).isNull();
+        assertThat(p.database()).isNull();
+    }
+
+    // -----------------------------------------------------------------
+    // JDBC URLs — MariaDB
+    // -----------------------------------------------------------------
+
+    @Test
+    void parsesMariaDbJdbc() {
+        ParsedConnection p = parser.parse("jdbc:mariadb://mariadb-host:3307/inventory");
+        assertThat(p.databaseType()).isEqualTo(DatabaseType.MARIADB);
+        assertThat(p.host()).isEqualTo("mariadb-host");
+        assertThat(p.port()).isEqualTo(3307);
+        assertThat(p.database()).isEqualTo("inventory");
+    }
+
+    // -----------------------------------------------------------------
+    // JDBC URLs — SQL Server
+    // -----------------------------------------------------------------
+
+    @Test
+    void parsesSqlServerJdbcWithSemicolons() {
+        ParsedConnection p = parser.parse("jdbc:sqlserver://sql-host:1433;databaseName=reportdb;encrypt=true");
+        assertThat(p.databaseType()).isEqualTo(DatabaseType.SQLSERVER);
+        assertThat(p.host()).isEqualTo("sql-host");
+        assertThat(p.port()).isEqualTo(1433);
+        assertThat(p.database()).isEqualTo("reportdb");
+        assertThat(p.parameters()).containsEntry("encrypt", "true");
+    }
+
+    @Test
+    void parsesSqlServerJdbcWithNoParams() {
+        ParsedConnection p = parser.parse("jdbc:sqlserver://sql-host");
+        assertThat(p.host()).isEqualTo("sql-host");
+        assertThat(p.port()).isNull();
+        assertThat(p.database()).isNull();
+    }
+
+    // -----------------------------------------------------------------
+    // JDBC URLs — Oracle
+    // -----------------------------------------------------------------
+
+    @Test
+    void parsesOracleServiceName() {
+        ParsedConnection p = parser.parse("jdbc:oracle:thin:@//ora-host:1521/myservice");
+        assertThat(p.databaseType()).isEqualTo(DatabaseType.ORACLE);
+        assertThat(p.host()).isEqualTo("ora-host");
+        assertThat(p.port()).isEqualTo(1521);
+        assertThat(p.database()).isEqualTo("/myservice");
+    }
+
+    @Test
+    void parsesOracleSid() {
+        ParsedConnection p = parser.parse("jdbc:oracle:thin:@ora-host:1521:orcl");
+        assertThat(p.databaseType()).isEqualTo(DatabaseType.ORACLE);
+        assertThat(p.host()).isEqualTo("ora-host");
+        assertThat(p.port()).isEqualTo(1521);
+        assertThat(p.database()).isEqualTo("orcl");
+    }
+
+    // -----------------------------------------------------------------
+    // JDBC URLs — H2
+    // -----------------------------------------------------------------
+
+    @Test
+    void parsesH2Mem() {
+        ParsedConnection p = parser.parse("jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1");
+        assertThat(p.databaseType()).isEqualTo(DatabaseType.H2);
+        assertThat(p.host()).isNull();
+        assertThat(p.port()).isNull();
+        assertThat(p.database()).isEqualTo("testdb");
+        assertThat(p.parameters()).containsEntry("DB_CLOSE_DELAY", "-1");
+    }
+
+    @Test
+    void parsesH2File() {
+        ParsedConnection p = parser.parse("jdbc:h2:file:/data/mydb");
+        assertThat(p.databaseType()).isEqualTo(DatabaseType.H2);
+        assertThat(p.database()).isEqualTo("/data/mydb");
+    }
+
+    @Test
+    void parsesH2Tcp() {
+        ParsedConnection p = parser.parse("jdbc:h2:tcp://remotehost:9092/~/testdb");
+        assertThat(p.databaseType()).isEqualTo(DatabaseType.H2);
+        assertThat(p.host()).isEqualTo("remotehost");
+        assertThat(p.port()).isEqualTo(9092);
+        assertThat(p.database()).isEqualTo("/~/testdb");
+    }
+
+    // -----------------------------------------------------------------
+    // URI forms
+    // -----------------------------------------------------------------
+
+    @Test
+    void parsesPostgresUri() {
+        ParsedConnection p = parser.parse("postgres://user:p%40sswd@pg-host:5432/mydb?sslmode=require");
+        assertThat(p.databaseType()).isEqualTo(DatabaseType.POSTGRESQL);
+        assertThat(p.host()).isEqualTo("pg-host");
+        assertThat(p.port()).isEqualTo(5432);
+        assertThat(p.database()).isEqualTo("mydb");
+        assertThat(p.username()).isEqualTo("user");
+        assertThat(p.password()).isEqualTo("p@sswd");
+        assertThat(p.jdbcUrl()).isEqualTo("jdbc:postgresql://pg-host:5432/mydb?sslmode=require");
+    }
+
+    @Test
+    void parsesPostgresqlUriAlias() {
+        ParsedConnection p = parser.parse("postgresql://pg-host/app");
+        assertThat(p.databaseType()).isEqualTo(DatabaseType.POSTGRESQL);
+        assertThat(p.database()).isEqualTo("app");
+    }
+
+    @Test
+    void parsesMySqlUri() {
+        ParsedConnection p = parser.parse("mysql://root:pass@mysql-host:3306/testdb");
+        assertThat(p.databaseType()).isEqualTo(DatabaseType.MYSQL);
+        assertThat(p.username()).isEqualTo("root");
+        assertThat(p.password()).isEqualTo("pass");
+        assertThat(p.database()).isEqualTo("testdb");
+        assertThat(p.jdbcUrl()).isEqualTo("jdbc:mysql://mysql-host:3306/testdb");
+    }
+
+    @Test
+    void parsesMariaDbUri() {
+        ParsedConnection p = parser.parse("mariadb://user:mypass@mariadb-host/inventory");
+        assertThat(p.databaseType()).isEqualTo(DatabaseType.MARIADB);
+        assertThat(p.username()).isEqualTo("user");
+        assertThat(p.password()).isEqualTo("mypass");
+        assertThat(p.database()).isEqualTo("inventory");
+    }
+
+    @Test
+    void parsesSqlServerUri() {
+        ParsedConnection p = parser.parse("sqlserver://admin@sql-host:1433/reportdb?encrypt=true&trustServerCertificate=true");
+        assertThat(p.databaseType()).isEqualTo(DatabaseType.SQLSERVER);
+        assertThat(p.host()).isEqualTo("sql-host");
+        assertThat(p.port()).isEqualTo(1433);
+        assertThat(p.database()).isEqualTo("reportdb");
+        assertThat(p.username()).isEqualTo("admin");
+        assertThat(p.parameters()).hasSize(2);
+        // SQL Server uses semicolons in JDBC URL
+        String jdbcUrl = p.jdbcUrl();
+        assertThat(jdbcUrl).contains(";databaseName=reportdb");
+        assertThat(jdbcUrl).contains(";encrypt=true");
+        assertThat(jdbcUrl).contains(";trustServerCertificate=true");
+    }
+
+    @Test
+    void parsesUriWithPlusInPassword() {
+        // '+' in URI userInfo should be decoded as literal '+', not as space
+        ParsedConnection p = parser.parse("postgres://user:pa%2Bss@host/db");
+        assertThat(p.password()).isEqualTo("pa+ss");
+    }
+
+    @Test
+    void parsesUriWithUsernameOnly() {
+        ParsedConnection p = parser.parse("postgres://reader@host/db");
+        assertThat(p.username()).isEqualTo("reader");
+        assertThat(p.password()).isNull();
+    }
+
+    // -----------------------------------------------------------------
+    // Rejection cases
+    // -----------------------------------------------------------------
+
+    @ParameterizedTest
+    @NullSource
+    @EmptySource
+    @ValueSource(strings = {"  ", "\t\n"})
+    void rejectsNullOrBlankInput(String input) {
+        assertThatThrownBy(() -> parser.parse(input))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("connectionString is required");
+    }
+
+    @Test
+    void rejectsBlankInputWithOnlyWhitespace() {
+        assertThatThrownBy(() -> parser.parse("   \t\n  "))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "mongodb://localhost:27017/mydb",
+            "mongodb+srv://user:pass@cluster0.mongodb.net/mydb"
+    })
+    void rejectsMongoDbConnectionStrings(String input) {
+        assertThatThrownBy(() -> parser.parse(input))
+                .isInstanceOf(UnsupportedDatabaseException.class)
+                .hasMessageContaining("MongoDB");
+    }
+
+    @Test
+    void rejectsUnsupportedScheme() {
+        assertThatThrownBy(() -> parser.parse("redis://localhost:6379"))
+                .isInstanceOf(UnsupportedDatabaseException.class);
+    }
+
+    @Test
+    void rejectsUnsupportedJdbcPrefix() {
+        assertThatThrownBy(() -> parser.parse("jdbc:sqlite:/path/to/db"))
+                .isInstanceOf(UnsupportedDatabaseException.class);
+    }
+
+    @Test
+    void rejectsUnrecognisedFormat() {
+        assertThatThrownBy(() -> parser.parse("host:5432/mydb"))
+                .isInstanceOf(UnsupportedDatabaseException.class);
+    }
+
+    // -----------------------------------------------------------------
+    // DatabaseType enum
+    // -----------------------------------------------------------------
+
+    @ParameterizedTest
+    @CsvSource({
+            "POSTGRESQL, postgresql",
+            "MYSQL, mysql",
+            "MARIADB, mariadb",
+            "SQLSERVER, sqlserver",
+            "ORACLE, oracle",
+            "H2, h2"
+    })
+    void databaseTypeIdMatchesExpected(DatabaseType type, String expected) {
+        assertThat(type.id()).isEqualTo(expected);
+    }
+
+    @Test
+    void databaseTypeFromIdIsCaseInsensitive() {
+        assertThat(DatabaseType.fromId("PostgreSQL")).isEqualTo(DatabaseType.POSTGRESQL);
+        assertThat(DatabaseType.fromId("MYSQL")).isEqualTo(DatabaseType.MYSQL);
+        assertThat(DatabaseType.fromId("h2")).isEqualTo(DatabaseType.H2);
+    }
+
+    @Test
+    void databaseTypeFromIdReturnsNullForUnknown() {
+        assertThat(DatabaseType.fromId("unknown")).isNull();
+    }
+
+    // -----------------------------------------------------------------
+    // ParsedConnection toString does not leak password
+    // -----------------------------------------------------------------
+
+    @Test
+    void toStringDoesNotExposePassword() {
+        ParsedConnection p = parser.parse("postgres://user:secret@host/db");
+        String str = p.toString();
+        assertThat(str).contains("password=***");
+        assertThat(str).doesNotContain("secret");
+    }
+}

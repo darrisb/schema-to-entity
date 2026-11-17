@@ -1,6 +1,8 @@
 package com.example.dynamicmeta;
 
 import com.example.dynamicmeta.connection.ConnectionRejectedException;
+import com.example.dynamicmeta.connection.ConnectionStringParser;
+import com.example.dynamicmeta.connection.ParsedConnection;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -67,7 +69,7 @@ public class SchemaDiscoveryService {
         if (!properties.isExplicitConnectionsEnabled()) {
             throw new ConnectionRejectedException("Explicit database connections are disabled");
         }
-        ResolvedConnection resolved = resolve(request);
+        ParsedConnection parsed = new ConnectionStringParser().parse(request.connectionString());
         if (request.driverClassName() != null && !request.driverClassName().isBlank()) {
             try {
                 Class.forName(request.driverClassName());
@@ -76,12 +78,12 @@ public class SchemaDiscoveryService {
             }
         }
         Properties connectionProperties = new Properties();
-        putIfPresent(connectionProperties, "user", firstNonBlank(request.username(), resolved.username()));
-        putIfPresent(connectionProperties, "password", firstNonBlank(request.password(), resolved.password()));
+        putIfPresent(connectionProperties, "user", firstNonBlank(request.username(), parsed.username()));
+        putIfPresent(connectionProperties, "password", firstNonBlank(request.password(), parsed.password()));
         if (Boolean.TRUE.equals(request.ssl())) {
             connectionProperties.setProperty("sslmode", "require");
         }
-        try (Connection connection = DriverManager.getConnection(resolved.jdbcUrl(), connectionProperties)) {
+        try (Connection connection = DriverManager.getConnection(parsed.jdbcUrl(), connectionProperties)) {
             return inspect(connection, firstNonBlank(request.schemaName(), properties.getSchema()),
                     safeTables(request.tables()));
         }
@@ -201,37 +203,6 @@ public class SchemaDiscoveryService {
         return normalized.replaceAll("[^a-z0-9]+", "-").replaceAll("(^-|-$)", "");
     }
 
-    private static ResolvedConnection resolve(ConnectionRequest request) {
-        if (request == null || request.connectionString() == null || request.connectionString().isBlank()) {
-            throw new IllegalArgumentException("A connectionString is required");
-        }
-        String value = request.connectionString().trim();
-        if (value.startsWith("jdbc:")) {
-            return new ResolvedConnection(value, null, null);
-        }
-        if (value.startsWith("postgres://") || value.startsWith("postgresql://")) {
-            java.net.URI uri = java.net.URI.create(value);
-            String user = null;
-            String password = null;
-            if (uri.getRawUserInfo() != null) {
-                String[] parts = uri.getRawUserInfo().split(":", 2);
-                user = decode(parts[0]);
-                password = parts.length == 2 ? decode(parts[1]) : null;
-            }
-            String jdbcUrl = "jdbc:postgresql://" + uri.getHost()
-                    + (uri.getPort() < 0 ? "" : ":" + uri.getPort())
-                    + (uri.getRawPath() == null ? "" : uri.getRawPath())
-                    + (uri.getRawQuery() == null ? "" : "?" + uri.getRawQuery());
-            return new ResolvedConnection(jdbcUrl, user, password);
-        }
-        throw new IllegalArgumentException("connectionString must be a JDBC or PostgreSQL URL");
-    }
-
-    private static String decode(String value) {
-        return java.net.URLDecoder.decode(value.replace("+", "%2B"),
-                java.nio.charset.StandardCharsets.UTF_8);
-    }
-
     private static void putIfPresent(Properties properties, String key, String value) {
         if (value != null && !value.isBlank()) properties.setProperty(key, value);
     }
@@ -264,8 +235,5 @@ public class SchemaDiscoveryService {
                     "driverClassName=" + driverClassName + ", " +
                     "ssl=" + ssl + "]";
         }
-    }
-
-    private record ResolvedConnection(String jdbcUrl, String username, String password) {
     }
 }
