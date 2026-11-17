@@ -251,6 +251,18 @@ public class SchemaDiscoveryService {
             List<String> tables,
             String driverClassName,
             Boolean ssl) {
+
+        @Override
+        public String toString() {
+            return "ConnectionRequest[" +
+                    "connectionString=" + connectionString + ", " +
+                    "username=" + username + ", " +
+                    "password=***" + ", " +
+                    "schemaName=" + schemaName + ", " +
+                    "tables=" + tables + ", " +
+                    "driverClassName=" + driverClassName + ", " +
+                    "ssl=" + ssl + "]";
+        }
     }
 
     private record ResolvedConnection(String jdbcUrl, String username, String password) {

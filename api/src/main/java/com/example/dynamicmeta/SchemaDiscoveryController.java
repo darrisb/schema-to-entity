@@ -1,5 +1,7 @@
 package com.example.dynamicmeta;
 
+import com.example.dynamicmeta.connection.SecretRedactor;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -56,18 +58,13 @@ public class SchemaDiscoveryController {
 
     @ExceptionHandler({IllegalArgumentException.class, IllegalStateException.class})
     public ResponseEntity<Map<String, String>> badRequest(RuntimeException exception) {
-        return ResponseEntity.badRequest().body(Map.of("error", redact(exception.getMessage())));
+        return ResponseEntity.badRequest().body(Map.of("error", SecretRedactor.redact(exception.getMessage())));
     }
 
     @ExceptionHandler(SQLException.class)
     public ResponseEntity<Map<String, String>> connectionFailure(SQLException exception) {
         return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
-                .body(Map.of("error", redact(exception.getMessage())));
-    }
-
-    private static String redact(String message) {
-        if (message == null) return "Database operation failed";
-        return message.replaceAll("(?i)(postgres(?:ql)?://[^:/@\\s]+):[^@\\s]+@", "$1:***@");
+                .body(Map.of("error", SecretRedactor.redact(exception.getMessage())));
     }
 
     public record MetadataRequest(Map<String, Object> schema, Options options) {
