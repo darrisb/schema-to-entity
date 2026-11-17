@@ -1,5 +1,6 @@
 package com.example.dynamicmeta;
 
+import com.example.dynamicmeta.connection.ConnectionPolicy;
 import org.h2.jdbcx.JdbcDataSource;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
@@ -16,12 +17,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class SchemaDiscoveryServiceTests {
 
+    private static final ConnectionPolicy DEFAULT_POLICY = new ConnectionPolicy(List.of(), false);
+
     @Test
     void discoversTheContainingApplicationsDataSource() throws Exception {
         JdbcDataSource dataSource = dataSource("host");
         createSchema(dataSource);
         SchemaDiscoveryService service = new SchemaDiscoveryService(
-                dataSource, new SchemaToEntityProperties());
+                dataSource, new SchemaToEntityProperties(), DEFAULT_POLICY);
 
         Map<String, Object> result = service.discover("PUBLIC", List.of());
 
@@ -41,7 +44,10 @@ class SchemaDiscoveryServiceTests {
         JdbcDataSource host = dataSource("host2");
         JdbcDataSource external = dataSource("external");
         createSchema(external);
-        SchemaDiscoveryService service = new SchemaDiscoveryService(host, new SchemaToEntityProperties());
+        SchemaToEntityProperties props = new SchemaToEntityProperties();
+        props.setAllowEmbeddedDatabases(true);
+        SchemaDiscoveryService service = new SchemaDiscoveryService(
+                host, props, new ConnectionPolicy(List.of(), true));
 
         Map<String, Object> result = service.discover(new SchemaDiscoveryService.ConnectionRequest(
                 "jdbc:h2:mem:external;DB_CLOSE_DELAY=-1", "sa", "", "PUBLIC",

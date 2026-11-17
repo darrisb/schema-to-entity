@@ -11,6 +11,8 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import com.example.dynamicmeta.connection.ConnectionPolicy;
+
 import javax.sql.DataSource;
 
 @AutoConfiguration(after = DataSourceAutoConfiguration.class)
@@ -22,9 +24,19 @@ public class SchemaToEntityAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
+    ConnectionPolicy connectionPolicy(SchemaToEntityProperties properties) {
+        return new ConnectionPolicy(
+                properties.getAllowedHosts(),
+                properties.isAllowEmbeddedDatabases());
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
     SchemaDiscoveryService schemaDiscoveryService(
-            DataSource dataSource, SchemaToEntityProperties properties) {
-        return new SchemaDiscoveryService(dataSource, properties);
+            DataSource dataSource,
+            SchemaToEntityProperties properties,
+            ConnectionPolicy policy) {
+        return new SchemaDiscoveryService(dataSource, properties, policy);
     }
 
     @Bean

@@ -1,5 +1,6 @@
 package com.example.dynamicmeta;
 
+import com.example.dynamicmeta.connection.ConnectionPolicy;
 import com.example.dynamicmeta.connection.ConnectionRejectedException;
 import com.example.dynamicmeta.connection.ConnectionStringParser;
 import com.example.dynamicmeta.connection.ParsedConnection;
@@ -35,10 +36,14 @@ public class SchemaDiscoveryService {
 
     private final DataSource dataSource;
     private final SchemaToEntityProperties properties;
+    private final ConnectionPolicy policy;
 
-    public SchemaDiscoveryService(DataSource dataSource, SchemaToEntityProperties properties) {
+    public SchemaDiscoveryService(DataSource dataSource,
+                                  SchemaToEntityProperties properties,
+                                  ConnectionPolicy policy) {
         this.dataSource = dataSource;
         this.properties = properties;
+        this.policy = policy;
     }
 
     /** Returns a fixed schema so the API can be demonstrated without a database. */
@@ -71,6 +76,7 @@ public class SchemaDiscoveryService {
             throw new ConnectionRejectedException("Explicit database connections are disabled");
         }
         ParsedConnection parsed = new ConnectionStringParser().parse(request.connectionString());
+        policy.validate(parsed);
         String expectedDriver = parsed.databaseType().getDriverClassName();
         if (request.driverClassName() != null && !request.driverClassName().isBlank()) {
             if (!expectedDriver.equals(request.driverClassName())) {

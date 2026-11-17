@@ -2,6 +2,7 @@ package com.example.dynamicmeta;
 
 import com.example.dynamicmeta.connection.ConnectionBusyException;
 import com.example.dynamicmeta.connection.ConnectionException;
+import com.example.dynamicmeta.connection.ConnectionPolicy;
 import com.example.dynamicmeta.connection.ConnectionRejectedException;
 import com.example.dynamicmeta.connection.UnsupportedDatabaseException;
 import org.h2.jdbcx.JdbcDataSource;
@@ -14,6 +15,7 @@ import org.springframework.http.ResponseEntity;
 import javax.sql.DataSource;
 import java.sql.SQLTimeoutException;
 import java.sql.SQLTransientConnectionException;
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -39,7 +41,7 @@ class SchemaDiscoveryControllerErrorTests {
     @Test
     void connectionRejectedExceptionReturns403() {
         SchemaDiscoveryController controller = new SchemaDiscoveryController(
-                new SchemaDiscoveryService(stubDataSource(), new SchemaToEntityProperties()), transformer());
+                new SchemaDiscoveryService(stubDataSource(), new SchemaToEntityProperties(), new ConnectionPolicy(List.of(), true)), transformer());
 
         ResponseEntity<Map<String, String>> response = controller.connectionRejected(
                 new ConnectionRejectedException("Explicit database connections are disabled"));
@@ -51,7 +53,7 @@ class SchemaDiscoveryControllerErrorTests {
     @Test
     void connectionRejectedExceptionRedactsCredentials() {
         SchemaDiscoveryController controller = new SchemaDiscoveryController(
-                new SchemaDiscoveryService(stubDataSource(), new SchemaToEntityProperties()), transformer());
+                new SchemaDiscoveryService(stubDataSource(), new SchemaToEntityProperties(), new ConnectionPolicy(List.of(), true)), transformer());
 
         ResponseEntity<Map<String, String>> response = controller.connectionRejected(
                 new ConnectionRejectedException("Refused connection to postgres://admin:s3cret@host/db"));
@@ -68,7 +70,7 @@ class SchemaDiscoveryControllerErrorTests {
         ds.setURL("jdbc:h2:mem:errtest;DB_CLOSE_DELAY=-1");
         SchemaToEntityProperties props = new SchemaToEntityProperties();
         props.setExplicitConnectionsEnabled(false);
-        SchemaDiscoveryService service = new SchemaDiscoveryService(ds, props);
+        SchemaDiscoveryService service = new SchemaDiscoveryService(ds, props, new ConnectionPolicy(List.of(), true));
 
         SchemaDiscoveryService.ConnectionRequest request = new SchemaDiscoveryService.ConnectionRequest(
                 "jdbc:h2:mem:errtest;DB_CLOSE_DELAY=-1", "sa", "", null, null, null, null);
@@ -83,7 +85,7 @@ class SchemaDiscoveryControllerErrorTests {
     @Test
     void illegalArgumentExceptionReturns400() {
         SchemaDiscoveryController controller = new SchemaDiscoveryController(
-                new SchemaDiscoveryService(stubDataSource(), new SchemaToEntityProperties()), transformer());
+                new SchemaDiscoveryService(stubDataSource(), new SchemaToEntityProperties(), new ConnectionPolicy(List.of(), true)), transformer());
 
         ResponseEntity<Map<String, String>> response = controller.badRequest(
                 new IllegalArgumentException("A connectionString is required"));
@@ -97,7 +99,7 @@ class SchemaDiscoveryControllerErrorTests {
     @Test
     void unsupportedDatabaseExceptionReturns422() {
         SchemaDiscoveryController controller = new SchemaDiscoveryController(
-                new SchemaDiscoveryService(stubDataSource(), new SchemaToEntityProperties()), transformer());
+                new SchemaDiscoveryService(stubDataSource(), new SchemaToEntityProperties(), new ConnectionPolicy(List.of(), true)), transformer());
 
         ResponseEntity<Map<String, String>> response = controller.unsupportedDatabase(
                 new UnsupportedDatabaseException("Database type 'cassandra' is not supported"));
@@ -111,7 +113,7 @@ class SchemaDiscoveryControllerErrorTests {
     @Test
     void connectionBusyExceptionReturns429() {
         SchemaDiscoveryController controller = new SchemaDiscoveryController(
-                new SchemaDiscoveryService(stubDataSource(), new SchemaToEntityProperties()), transformer());
+                new SchemaDiscoveryService(stubDataSource(), new SchemaToEntityProperties(), new ConnectionPolicy(List.of(), true)), transformer());
 
         ResponseEntity<Map<String, String>> response = controller.connectionBusy(
                 new ConnectionBusyException("Too many concurrent connections"));
@@ -125,7 +127,7 @@ class SchemaDiscoveryControllerErrorTests {
     @Test
     void sqlTimeoutExceptionReturns504() {
         SchemaDiscoveryController controller = new SchemaDiscoveryController(
-                new SchemaDiscoveryService(stubDataSource(), new SchemaToEntityProperties()), transformer());
+                new SchemaDiscoveryService(stubDataSource(), new SchemaToEntityProperties(), new ConnectionPolicy(List.of(), true)), transformer());
 
         ResponseEntity<Map<String, String>> response = controller.connectionTimeout(
                 new SQLTimeoutException("Operation timed out after 30 seconds"));
@@ -139,7 +141,7 @@ class SchemaDiscoveryControllerErrorTests {
     @Test
     void sqlExceptionReturns502() {
         SchemaDiscoveryController controller = new SchemaDiscoveryController(
-                new SchemaDiscoveryService(stubDataSource(), new SchemaToEntityProperties()), transformer());
+                new SchemaDiscoveryService(stubDataSource(), new SchemaToEntityProperties(), new ConnectionPolicy(List.of(), true)), transformer());
 
         ResponseEntity<Map<String, String>> response = controller.connectionFailure(
                 new SQLTransientConnectionException("Connection refused"));
@@ -153,7 +155,7 @@ class SchemaDiscoveryControllerErrorTests {
     @Test
     void sqlExceptionRedactsCredentials() {
         SchemaDiscoveryController controller = new SchemaDiscoveryController(
-                new SchemaDiscoveryService(stubDataSource(), new SchemaToEntityProperties()), transformer());
+                new SchemaDiscoveryService(stubDataSource(), new SchemaToEntityProperties(), new ConnectionPolicy(List.of(), true)), transformer());
 
         ResponseEntity<Map<String, String>> response = controller.connectionFailure(
                 new SQLTransientConnectionException("Failed to connect to postgres://user:pass123@host/db"));

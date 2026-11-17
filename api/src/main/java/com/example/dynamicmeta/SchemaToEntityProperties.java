@@ -1,5 +1,7 @@
 package com.example.dynamicmeta;
 
+import java.util.List;
+
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties("schema-to-entity")
@@ -9,6 +11,8 @@ public class SchemaToEntityProperties {
     private boolean webEnabled = true;
     private boolean explicitConnectionsEnabled = true;
     private String schema;
+    private List<String> allowedHosts = List.of();
+    private boolean allowEmbeddedDatabases = false;
 
     public boolean isEnabled() {
         return enabled;
@@ -40,5 +44,21 @@ public class SchemaToEntityProperties {
 
     public void setSchema(String schema) {
         this.schema = schema;
+    }
+
+    public List<String> getAllowedHosts() {
+        return allowedHosts;
+    }
+
+    public void setAllowedHosts(List<String> allowedHosts) {
+        this.allowedHosts = allowedHosts;
+    }
+
+    public boolean isAllowEmbeddedDatabases() {
+        return allowEmbeddedDatabases;
+    }
+
+    public void setAllowEmbeddedDatabases(boolean allowEmbeddedDatabases) {
+        this.allowEmbeddedDatabases = allowEmbeddedDatabases;
     }
 }
