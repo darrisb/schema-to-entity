@@ -96,9 +96,22 @@ string with credentials and opens it. It is reachable through the UI's nginx pro
 authentication. `schema-to-entity.explicit-connections-enabled` can disable it, but is
 `true` by default and set that way in `demo/src/main/resources/application.yml`.
 
-Passwords are redacted from error responses, but the endpoint is still an SSRF and
-credential-exfiltration surface. Require authentication and authorization before any
-non-local deployment.
+**Mitigations in place:**
+
+| Control | Setting / Mechanism | Default |
+|---|---|---|
+| Toggle | `schema-to-entity.explicit-connections-enabled` | `true` (set `false` in production unless behind auth) |
+| Host allowlist | `schema-to-entity.allowed-hosts` (exact + `*` wildcard patterns) | `[]` (any host) |
+| URL parameter allowlist | Hard-coded in `ConnectionPolicy` (JDBC-specific params only) | — |
+| Embedded DB rule | `schema-to-entity.allow-embedded-databases` blocks H2 `mem:`/`file:` etc. | `false` |
+| Concurrency limit | `schema-to-entity.max-concurrent-explicit-connections` | 4 |
+| Secret redaction | `ErrorSecretRedactor` on all error responses | always on |
+| Timeouts | `connect-timeout` (10 s) / `socket-timeout` (60 s) | — |
+| Read-only | Connections opened with read-only flag where the driver supports it | — |
+
+**What remains:** No authentication or authorization. Any caller that can reach the
+endpoint can supply credentials and query arbitrary databases (within the policy limits
+above). Require authentication and authorization before any non-local deployment.
 
 ### 7. Build output was committed to git
 

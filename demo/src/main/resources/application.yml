@@ -13,5 +13,19 @@ server:
 schema-to-entity:
   enabled: true
   web-enabled: true
+  # true here so the demo works locally.
+  # Production must set to false or put behind authentication.
   explicit-connections-enabled: true
   schema: public
+  # Host allowlist (empty = any host allowed, subject to other policy checks).
+  # Supports exact match and "*.example.com" wildcard patterns.
+  allowed-hosts: []
+  # Allow H2 mem:/file: and other embedded databases (default: false).
+  allow-embedded-databases: false
+  # Maximum time to wait when establishing a connection (default: 10s).
+  connect-timeout: 10s
+  # Maximum idle time between two data packets (default: 60s).
+  socket-timeout: 60s
+  # Maximum number of concurrent schema extractions via explicit connections
+  # (default: 4). Excess requests receive HTTP 429.
+  max-concurrent-explicit-connections: 4
