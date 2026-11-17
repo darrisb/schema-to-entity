@@ -39,6 +39,8 @@ public class JdbcConnectionFactory {
      * The returned connection is put into read-only mode
      * ({@link Connection#setReadOnly(boolean)}). If the driver does not support
      * read-only mode {@link SQLFeatureNotSupportedException} is swallowed silently.
+     * If any other failure happens after the connection is opened, the connection
+     * is closed before the failure is rethrown.
      *
      * @param parsed        the parsed connection (from {@link ConnectionStringParser})
      * @param requestUser   caller-supplied user, may override the URL's user
@@ -70,6 +72,15 @@ public class JdbcConnectionFactory {
             conn.setReadOnly(true);
         } catch (SQLFeatureNotSupportedException ignored) {
             // Not all drivers support read-only; continue anyway.
+        } catch (SQLException | RuntimeException e) {
+            // The connection is already open, so any failure while configuring it
+            // must not leak it. Close it, then propagate the original failure.
+            try {
+                conn.close();
+            } catch (SQLException closeFailure) {
+                e.addSuppressed(closeFailure);
+            }
+            throw e;
         }
         return conn;
     }
@@ -101,6 +112,9 @@ public class JdbcConnectionFactory {
         // SSL properties per driver.
         addSslProperties(parsed.databaseType(), props, parsed.jdbcUrl(), ssl);
 
+        // Read-only enforcement per driver.
+        addReadOnlyProperties(parsed.databaseType(), props);
+
         return props;
     }
 
@@ -114,9 +128,9 @@ public class JdbcConnectionFactory {
 
         switch (type) {
             case POSTGRESQL -> {
-                // Postgres: seconds
-                props.setProperty("connectTimeout", Long.toString(connectMs / 1000));
-                props.setProperty("socketTimeout", Long.toString(socketMs / 1000));
+                // Postgres: seconds, rounded up; a value of 0 means no timeout.
+                props.setProperty("connectTimeout", Long.toString(toSeconds(connectMs)));
+                props.setProperty("socketTimeout", Long.toString(toSeconds(socketMs)));
             }
             case MYSQL, MARIADB -> {
                 // MySQL / MariaDB: milliseconds
@@ -124,8 +138,8 @@ public class JdbcConnectionFactory {
                 props.setProperty("socketTimeout", Long.toString(socketMs));
             }
             case SQLSERVER -> {
-                // SQL Server: loginTimeout in seconds, socketTimeout in ms
-                props.setProperty("loginTimeout", Long.toString(connectMs / 1000));
+                // SQL Server: loginTimeout in seconds (rounded up), socketTimeout in ms
+                props.setProperty("loginTimeout", Long.toString(toSeconds(connectMs)));
                 props.setProperty("socketTimeout", Long.toString(socketMs));
             }
             case ORACLE -> {
@@ -136,6 +150,28 @@ public class JdbcConnectionFactory {
             default -> {
                 // H2 and others: no well-known timeout properties; skip.
             }
+        }
+    }
+
+    /**
+     * Converts milliseconds to whole seconds, rounding up and never returning
+     * less than 1. Drivers that treat 0 as "no timeout" would otherwise disable
+     * the timeout for sub-second values.
+     */
+    private static long toSeconds(long millis) {
+        return Math.max(1L, Math.ceilDiv(millis, 1000L));
+    }
+
+    // -------------------------------------------------------------------
+    // Read-only translation
+    // -------------------------------------------------------------------
+
+    private void addReadOnlyProperties(DatabaseType type, Properties props) {
+        if (type == DatabaseType.POSTGRESQL) {
+            // pgjdbc's default readOnlyMode=transaction only rejects writes
+            // inside a transaction; with autocommit on, writes still succeed.
+            // "always" makes the whole session read-only.
+            props.setProperty("readOnlyMode", "always");
         }
     }
 

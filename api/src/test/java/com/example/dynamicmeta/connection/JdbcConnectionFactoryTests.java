@@ -4,15 +4,19 @@ import org.h2.jdbcx.JdbcDataSource;
 import org.junit.jupiter.api.Test;
 
 import javax.sql.DataSource;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Proxy;
 import java.sql.Connection;
 import java.sql.Driver;
 import java.sql.DriverManager;
 import java.sql.DriverPropertyInfo;
+import java.sql.SQLException;
 import java.sql.SQLFeatureNotSupportedException;
 import java.sql.Statement;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Properties;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -65,6 +69,52 @@ class JdbcConnectionFactoryTests {
 
         assertThat(props.getProperty("loginTimeout")).isEqualTo("10");
         assertThat(props.getProperty("socketTimeout")).isEqualTo("60000");
+    }
+
+    @Test
+    void subSecondTimeoutsRoundUpToOneSecond() {
+        JdbcConnectionFactory subSecond = new JdbcConnectionFactory(
+                Duration.ofMillis(500), Duration.ofMillis(500));
+
+        ParsedConnection postgres = ParsedConnection.of(DatabaseType.POSTGRESQL,
+                "jdbc:postgresql://localhost:5432/testdb", "localhost", 5432, "testdb");
+        Properties pgProps = subSecond.buildProperties(postgres, "u", "p", null);
+        assertThat(pgProps.getProperty("connectTimeout")).isEqualTo("1");
+        assertThat(pgProps.getProperty("socketTimeout")).isEqualTo("1");
+
+        ParsedConnection sqlServer = ParsedConnection.of(DatabaseType.SQLSERVER,
+                "jdbc:sqlserver://localhost:1433;databaseName=testdb", "localhost", 1433, "testdb");
+        Properties ssProps = subSecond.buildProperties(sqlServer, "u", "p", null);
+        assertThat(ssProps.getProperty("loginTimeout")).isEqualTo("1");
+    }
+
+    @Test
+    void zeroTimeoutBecomesOneSecondForSecondsBasedDrivers() {
+        JdbcConnectionFactory zero = new JdbcConnectionFactory(Duration.ZERO, Duration.ZERO);
+
+        ParsedConnection postgres = ParsedConnection.of(DatabaseType.POSTGRESQL,
+                "jdbc:postgresql://localhost:5432/testdb", "localhost", 5432, "testdb");
+        Properties pgProps = zero.buildProperties(postgres, "u", "p", null);
+        assertThat(pgProps.getProperty("connectTimeout")).isEqualTo("1");
+        assertThat(pgProps.getProperty("socketTimeout")).isEqualTo("1");
+
+        ParsedConnection sqlServer = ParsedConnection.of(DatabaseType.SQLSERVER,
+                "jdbc:sqlserver://localhost:1433;databaseName=testdb", "localhost", 1433, "testdb");
+        Properties ssProps = zero.buildProperties(sqlServer, "u", "p", null);
+        assertThat(ssProps.getProperty("loginTimeout")).isEqualTo("1");
+    }
+
+    @Test
+    void partialSecondsRoundUp() {
+        JdbcConnectionFactory oneAndHalf = new JdbcConnectionFactory(
+                Duration.ofMillis(1500), Duration.ofMillis(1500));
+
+        ParsedConnection postgres = ParsedConnection.of(DatabaseType.POSTGRESQL,
+                "jdbc:postgresql://localhost:5432/testdb", "localhost", 5432, "testdb");
+        Properties props = oneAndHalf.buildProperties(postgres, "u", "p", null);
+
+        assertThat(props.getProperty("connectTimeout")).isEqualTo("2");
+        assertThat(props.getProperty("socketTimeout")).isEqualTo("2");
     }
 
     @Test
@@ -231,6 +281,60 @@ class JdbcConnectionFactoryTests {
         }
     }
 
+    @Test
+    void postgresAlwaysSetsReadOnlyModeAlways() {
+        ParsedConnection parsed = ParsedConnection.of(DatabaseType.POSTGRESQL,
+                "jdbc:postgresql://localhost:5432/testdb", "localhost", 5432, "testdb");
+        Properties props = factory.buildProperties(parsed, "u", "p", null);
+
+        assertThat(props.getProperty("readOnlyMode")).isEqualTo("always");
+    }
+
+    @Test
+    void connectionIsClosedWhenSetReadOnlyThrows() throws Exception {
+        JdbcDataSource ds = h2DataSource("readonly-throwaway");
+        Connection delegate = ds.getConnection();
+        AtomicBoolean closed = new AtomicBoolean(false);
+
+        Connection throwing = (Connection) Proxy.newProxyInstance(
+                Connection.class.getClassLoader(),
+                new Class<?>[]{Connection.class},
+                (proxy, method, args) -> {
+                    switch (method.getName()) {
+                        case "setReadOnly":
+                            throw new SQLException("read-only mode rejected by stub");
+                        case "close":
+                            closed.set(true);
+                            delegate.close();
+                            return null;
+                        case "isClosed":
+                            return closed.get() || delegate.isClosed();
+                        default:
+                            try {
+                                return method.invoke(delegate, args);
+                            } catch (InvocationTargetException e) {
+                                throw e.getCause();
+                            }
+                    }
+                });
+
+        Driver driver = new FixedConnectionDriver(throwing);
+        DriverManager.registerDriver(driver);
+        try {
+            ParsedConnection parsed = ParsedConnection.of(DatabaseType.H2,
+                    "jdbc:throwingreadonly://localhost/throwaway", "localhost", null, "throwaway");
+
+            assertThatThrownBy(() -> factory.open(parsed, "sa", "", null))
+                    .isInstanceOf(SQLException.class)
+                    .hasMessageContaining("read-only mode rejected by stub");
+
+            assertThat(closed).isTrue();
+        } finally {
+            DriverManager.deregisterDriver(driver);
+            delegate.close();
+        }
+    }
+
     // -------------------------------------------------------------------
     // Custom timeout durations
     // -------------------------------------------------------------------
@@ -289,6 +393,50 @@ class JdbcConnectionFactoryTests {
         @Override
         public Connection connect(String url, Properties info) {
             return null;
+        }
+
+        @Override
+        public DriverPropertyInfo[] getPropertyInfo(String url, Properties info) {
+            return new DriverPropertyInfo[0];
+        }
+
+        @Override
+        public int getMajorVersion() {
+            return 1;
+        }
+
+        @Override
+        public int getMinorVersion() {
+            return 0;
+        }
+
+        @Override
+        public boolean jdbcCompliant() {
+            return false;
+        }
+
+        @Override
+        public java.util.logging.Logger getParentLogger() throws SQLFeatureNotSupportedException {
+            throw new SQLFeatureNotSupportedException();
+        }
+    }
+
+    /** A driver that accepts every URL and returns a fixed connection. */
+    private static final class FixedConnectionDriver implements Driver {
+        private final Connection connection;
+
+        private FixedConnectionDriver(Connection connection) {
+            this.connection = connection;
+        }
+
+        @Override
+        public boolean acceptsURL(String url) {
+            return true;
+        }
+
+        @Override
+        public Connection connect(String url, Properties info) {
+            return connection;
         }
 
         @Override
