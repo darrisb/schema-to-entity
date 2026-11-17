@@ -59,8 +59,11 @@ public class JdbcConnectionFactory {
         Driver driver = DriverManager.getDriver(url);
         Connection conn = driver.connect(url, props);
         if (conn == null) {
+            // Never include the JDBC URL: it can embed user:password@ credentials.
             throw new ConnectionException(
-                    "Driver " + driver.getClass().getName() + " refused to connect to " + url);
+                    "Driver " + driver.getClass().getName() + " refused to connect to "
+                            + parsed.databaseType() + " (" + parsed.databaseType().id()
+                            + ") at host " + parsed.host());
         }
 
         try {

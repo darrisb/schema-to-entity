@@ -8,6 +8,7 @@ import com.example.dynamicmeta.connection.DatabaseType;
 import com.example.dynamicmeta.connection.JdbcConnectionFactory;
 import com.example.dynamicmeta.connection.NamespaceResolver;
 import com.example.dynamicmeta.connection.ParsedConnection;
+import com.example.dynamicmeta.connection.SecretRedactor;
 import com.example.dynamicmeta.connection.UnsupportedDatabaseException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -399,7 +400,7 @@ public class SchemaDiscoveryService {
         @Override
         public String toString() {
             return "ConnectionRequest[" +
-                    "connectionString=" + connectionString + ", " +
+                    "connectionString=" + SecretRedactor.redact(connectionString) + ", " +
                     "username=" + username + ", " +
                     "password=***" + ", " +
                     "schemaName=" + schemaName + ", " +

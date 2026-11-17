@@ -10,9 +10,14 @@ public final class SecretRedactor {
     /**
      * Pattern for user:pass@ in URL-style connection strings.
      * Covers postgres, postgresql, mysql, mariadb, sqlserver, mongodb, mongodb+srv.
+     * <p>
+     * The password group may contain {@code @} and is greedy; it stops at the
+     * first path, query or fragment delimiter, so backtracking selects the last
+     * {@code @} before the host. Passwords containing {@code @} are therefore
+     * masked in full instead of leaving a suffix visible.
      */
     private static final Pattern URL_CREDS = Pattern.compile(
-            "((?:postgres(?:ql)?|mysql|mariadb|sqlserver|mongodb(?:\\+srv)?)://[^:\\/\\s@]+:)([^@\\s]+)(@)");
+            "((?:postgres(?:ql)?|mysql|mariadb|sqlserver|mongodb(?:\\+srv)?)://[^:\\/\\s@]+:)([^/\\s?#]+)(@)");
 
     /**
      * Pattern for password=, pwd=, passwd= key/value pairs in query strings or

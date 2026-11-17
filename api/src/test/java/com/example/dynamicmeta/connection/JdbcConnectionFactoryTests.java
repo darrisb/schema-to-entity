@@ -5,8 +5,13 @@ import org.junit.jupiter.api.Test;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
+import java.sql.Driver;
+import java.sql.DriverManager;
+import java.sql.DriverPropertyInfo;
+import java.sql.SQLFeatureNotSupportedException;
 import java.sql.Statement;
 import java.time.Duration;
+import java.util.LinkedHashMap;
 import java.util.Properties;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -244,8 +249,73 @@ class JdbcConnectionFactoryTests {
     }
 
     // -------------------------------------------------------------------
+    // Refusal message
+    // -------------------------------------------------------------------
+
+    @Test
+    void refusalMessageNamesTypeAndHostWithoutUrlOrCredentials() throws Exception {
+        Driver refusingDriver = new RefusingDriver();
+        DriverManager.registerDriver(refusingDriver);
+        try {
+            // The scheme is unknown to every real driver, so the stub is selected.
+            ParsedConnection parsed = new ParsedConnection(
+                    DatabaseType.POSTGRESQL,
+                    "jdbc:refuse://user:secret@dbhost:5432/appdb",
+                    "dbhost", 5432, "appdb", "user", "secret", new LinkedHashMap<>());
+
+            assertThatThrownBy(() -> factory.open(parsed, null, null, null))
+                    .isInstanceOf(ConnectionException.class)
+                    .hasMessageContaining("postgresql")
+                    .hasMessageContaining("POSTGRESQL")
+                    .hasMessageContaining("dbhost")
+                    .hasMessageNotContaining("jdbc:refuse://user:secret@dbhost:5432/appdb")
+                    .hasMessageNotContaining("secret");
+        } finally {
+            DriverManager.deregisterDriver(refusingDriver);
+        }
+    }
+
+    // -------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------
+
+    /** A driver that accepts every URL but never opens a connection. */
+    private static final class RefusingDriver implements Driver {
+        @Override
+        public boolean acceptsURL(String url) {
+            return true;
+        }
+
+        @Override
+        public Connection connect(String url, Properties info) {
+            return null;
+        }
+
+        @Override
+        public DriverPropertyInfo[] getPropertyInfo(String url, Properties info) {
+            return new DriverPropertyInfo[0];
+        }
+
+        @Override
+        public int getMajorVersion() {
+            return 1;
+        }
+
+        @Override
+        public int getMinorVersion() {
+            return 0;
+        }
+
+        @Override
+        public boolean jdbcCompliant() {
+            return false;
+        }
+
+        @Override
+        public java.util.logging.Logger getParentLogger() throws SQLFeatureNotSupportedException {
+            throw new SQLFeatureNotSupportedException();
+        }
+    }
 
     private static JdbcDataSource h2DataSource(String database) {
         JdbcDataSource dataSource = new JdbcDataSource();

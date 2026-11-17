@@ -14,18 +14,18 @@ public record ParsedConnection(
         String password,
         Map<String, String> parameters) {
 
-    /** Returns a summary that never exposes the password. */
+    /** Returns a summary that never exposes the password or parameter values. */
     @Override
     public String toString() {
         return "ParsedConnection[" +
                 "databaseType=" + databaseType + ", " +
-                "jdbcUrl=" + jdbcUrl + ", " +
+                "jdbcUrl=" + SecretRedactor.redact(jdbcUrl) + ", " +
                 "host=" + host + ", " +
                 "port=" + port + ", " +
                 "database=" + database + ", " +
                 "username=" + username + ", " +
                 "password=***" + ", " +
-                "parameters=" + parameters + "]";
+                "parameters=" + (parameters == null ? "null" : parameters.keySet()) + "]";
     }
 
     /** Create a ParsedConnection with an empty, mutable parameters map. */

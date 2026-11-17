@@ -3,7 +3,9 @@ package com.example.dynamicmeta.connection;
 import com.example.dynamicmeta.SchemaDiscoveryService;
 import org.junit.jupiter.api.Test;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -103,8 +105,14 @@ class SecretRedactorTests {
 
     @Test
     void masksPasswordWithAtSign() {
-        // In URL style, the first @ terminates the password group, so a literal @
-        // would need to be URL-encoded. We verify the encoded form is masked.
+        // The last '@' before the host ends the password, so a password that
+        // itself contains '@' is masked in full.
+        String result = SecretRedactor.redact("postgres://u:p@ss@host/db");
+        assertThat(result).isEqualTo("postgres://u:***@host/db");
+    }
+
+    @Test
+    void masksEncodedAtSignInPassword() {
         String result = SecretRedactor.redact("postgres://user:p%40ss@localhost/db");
         assertThat(result).isEqualTo("postgres://user:***@localhost/db");
     }
@@ -128,6 +136,40 @@ class SecretRedactorTests {
     void masksPasswordWithPercent() {
         String result = SecretRedactor.redact("postgres://user:p%25ss@localhost/db");
         assertThat(result).isEqualTo("postgres://user:***@localhost/db");
+    }
+
+    // --- ParsedConnection.toString() ---
+
+    @Test
+    void parsedConnectionToStringRedactsUriPassword() {
+        ParsedConnection parsed = new ParsedConnection(
+                DatabaseType.POSTGRESQL,
+                "postgres://user:secret@host:5432/db",
+                "host", 5432, "db", "user", "secret", new LinkedHashMap<>());
+
+        String str = parsed.toString();
+
+        assertThat(str).doesNotContain("secret");
+        assertThat(str).contains("password=***");
+        assertThat(str).contains("user:***@");
+    }
+
+    @Test
+    void parsedConnectionToStringRedactsParameterPasswordAndHidesValues() {
+        Map<String, String> params = new LinkedHashMap<>();
+        params.put("password", "secret");
+        params.put("ssl", "true");
+        ParsedConnection parsed = new ParsedConnection(
+                DatabaseType.POSTGRESQL,
+                "jdbc:postgresql://host:5432/db?password=secret",
+                "host", 5432, "db", "user", "secret", params);
+
+        String str = parsed.toString();
+
+        assertThat(str).doesNotContain("secret");
+        assertThat(str).doesNotContain("true");
+        assertThat(str).contains("password=***");
+        assertThat(str).contains("parameters=[password, ssl]");
     }
 
     // --- Edge cases ---
@@ -198,5 +240,32 @@ class SecretRedactorTests {
         assertThat(str).contains("password=***");
         assertThat(str).contains("myuser");
         assertThat(str).contains("jdbc:postgresql://localhost:5432/mydb");
+    }
+
+    @Test
+    void connectionRequestToStringRedactsUriPassword() {
+        SchemaDiscoveryService.ConnectionRequest request =
+                new SchemaDiscoveryService.ConnectionRequest(
+                        "postgres://user:secret@host:5432/db",
+                        "user", "secret", "public", List.of(), null, null);
+
+        String str = request.toString();
+
+        assertThat(str).doesNotContain("secret");
+        assertThat(str).contains("user:***@");
+        assertThat(str).contains("password=***");
+    }
+
+    @Test
+    void connectionRequestToStringRedactsParameterPassword() {
+        SchemaDiscoveryService.ConnectionRequest request =
+                new SchemaDiscoveryService.ConnectionRequest(
+                        "jdbc:postgresql://host:5432/db?password=secret",
+                        "user", null, "public", List.of(), null, null);
+
+        String str = request.toString();
+
+        assertThat(str).doesNotContain("secret");
+        assertThat(str).contains("password=***");
     }
 }
