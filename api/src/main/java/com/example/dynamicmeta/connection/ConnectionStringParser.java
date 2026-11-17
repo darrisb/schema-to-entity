@@ -1,7 +1,8 @@
 package com.example.dynamicmeta.connection;
 
-import java.net.URLDecoder;
+import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -480,22 +481,47 @@ public class ConnectionStringParser {
     // Helpers
     // -------------------------------------------------------------------
 
-    /** Decode a URL-encoded value, treating '+' as a literal (not a space). */
+    /**
+     * Decode a URL-encoded value, treating {@code '+'} as a literal plus.
+     * JDBC URL parameter values are not form-encoded, so {@code +} never
+     * means space. Malformed {@code %} escapes are left untouched instead of
+     * failing the parse (generated passwords commonly contain {@code %}).
+     */
     private static String decode(String value) {
-        return URLDecoder.decode(value.replace("+", "%2B"), StandardCharsets.UTF_8);
+        String plusEscaped = value.replace("+", "%2B");
+        byte[] decoded = percentDecode(plusEscaped);
+        return decoded == null ? value : new String(decoded, StandardCharsets.UTF_8);
     }
 
     /**
-     * Decode a query/parameter value using standard form semantics
-     * ({@code +} means space, {@code %XX} is decoded).
+     * Percent-decode {@code value} as UTF-8, leaving malformed escapes
+     * literal. Returns {@code null} when the decoded bytes are not valid
+     * UTF-8 so the caller can keep the original text.
      */
-    private static String decodeQueryValue(String value) {
-        try {
-            return URLDecoder.decode(value, StandardCharsets.UTF_8);
-        } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException(
-                    "Invalid connection string: invalid URL parameter value");
+    private static byte[] percentDecode(String value) {
+        if (value.indexOf('%') < 0) {
+            return value.getBytes(StandardCharsets.UTF_8);
         }
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (c == '%' && i + 2 < value.length()
+                    && isHexDigit(value.charAt(i + 1)) && isHexDigit(value.charAt(i + 2))) {
+                out.write((Character.digit(value.charAt(i + 1), 16) << 4)
+                        | Character.digit(value.charAt(i + 2), 16));
+                i += 2;
+            } else {
+                out.writeBytes(String.valueOf(c).getBytes(StandardCharsets.UTF_8));
+            }
+        }
+        byte[] bytes = out.toByteArray();
+        byte[] reencoded = new String(bytes, StandardCharsets.UTF_8)
+                .getBytes(StandardCharsets.UTF_8);
+        return Arrays.equals(bytes, reencoded) ? bytes : null;
+    }
+
+    private static boolean isHexDigit(char c) {
+        return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
     }
 
     /**
@@ -538,7 +564,7 @@ public class ConnectionStringParser {
             int eq = pair.indexOf('=');
             String key = eq > 0 ? pair.substring(0, eq) : pair;
             validateParameterKey(key);
-            params.put(key, eq > 0 ? decodeQueryValue(pair.substring(eq + 1)) : "");
+            params.put(key, eq > 0 ? decode(pair.substring(eq + 1)) : "");
         }
     }
 
@@ -560,7 +586,7 @@ public class ConnectionStringParser {
             int eq = pair.indexOf('=');
             if (eq > 0) {
                 String key = pair.substring(0, eq);
-                String val = decodeQueryValue(pair.substring(eq + 1));
+                String val = decode(pair.substring(eq + 1));
                 if (validateKeys) {
                     validateParameterKey(key);
                 }

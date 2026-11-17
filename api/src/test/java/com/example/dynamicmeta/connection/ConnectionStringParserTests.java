@@ -571,14 +571,85 @@ class ConnectionStringParserTests {
     }
 
     @Test
-    void decodesAndReencodesParameterValues() {
+    void decodesAndSelectivelyReencodesParameterValues() {
         ParsedConnection p = parser.parse(
                 "jdbc:postgresql://h/db?applicationName=my%20app&currentSchema=a/b");
         assertThat(p.parameters())
                 .containsEntry("applicationName", "my app")
                 .containsEntry("currentSchema", "a/b");
+        // Space is escaped as %20, but sub-delimiters such as '/' are left
+        // intact so the driver sees the original value.
         assertThat(p.jdbcUrl())
-                .isEqualTo("jdbc:postgresql://h/db?applicationName=my+app&currentSchema=a%2Fb");
+                .isEqualTo("jdbc:postgresql://h/db?applicationName=my%20app&currentSchema=a/b");
+    }
+
+    @Test
+    void keepsSubDelimitersInParameterValues() {
+        ParsedConnection p = parser.parse(
+                "jdbc:mysql://h/db?serverTimezone=Europe/Paris&applicationName=s1,s2");
+        assertThat(p.parameters())
+                .containsEntry("serverTimezone", "Europe/Paris")
+                .containsEntry("applicationName", "s1,s2");
+        assertThat(p.jdbcUrl())
+                .isEqualTo("jdbc:mysql://h/db?serverTimezone=Europe/Paris&applicationName=s1,s2");
+    }
+
+    @Test
+    void parameterValuesCannotInjectExtraParameters() {
+        // '?'/'&' form: '&', '=' and '#' must be escaped; ';' is not a
+        // separator in this form, so it stays literal.
+        ParsedConnection p = parser.parse(
+                "jdbc:postgresql://h/db?ssl=true&applicationName=x%26y%3Bz%3Dw%23v");
+        assertThat(p.parameters())
+                .containsEntry("ssl", "true")
+                .containsEntry("applicationName", "x&y;z=w#v")
+                .hasSize(2);
+        assertThat(p.jdbcUrl())
+                .isEqualTo("jdbc:postgresql://h/db?ssl=true&applicationName=x%26y;z%3Dw%23v");
+        // The rebuilt URL parses back to exactly the same parameter map.
+        assertThat(parser.parse(p.jdbcUrl()).parameters()).isEqualTo(p.parameters());
+
+        // ';' form: ';', '=' and '%' must be escaped.
+        ParsedConnection s = parser.parse(
+                "jdbc:sqlserver://h:1433;databaseName=db;applicationName=x%3By%3Dw%26v%23z");
+        assertThat(s.parameters())
+                .containsEntry("databaseName", "db")
+                .containsEntry("applicationName", "x;y=w&v#z");
+        assertThat(s.jdbcUrl())
+                .isEqualTo("jdbc:sqlserver://h:1433;databaseName=db;applicationName=x%3By%3Dw&v#z");
+        assertThat(parser.parse(s.jdbcUrl()).parameters()).isEqualTo(s.parameters());
+    }
+
+    @Test
+    void parsesH2UserAndPasswordParameters() {
+        ParsedConnection p = parser.parse("jdbc:h2:mem:t;USER=sa;PASSWORD=pw");
+        assertThat(p.username()).isEqualTo("sa");
+        assertThat(p.password()).isEqualTo("pw");
+        assertThat(p.parameters()).doesNotContainKeys("USER", "PASSWORD").isEmpty();
+        assertThat(p.jdbcUrl()).isEqualTo("jdbc:h2:mem:t");
+    }
+
+    @Test
+    void treatsPlusAsLiteralInParameterValues() {
+        ParsedConnection p = parser.parse("jdbc:postgresql://h/db?user=a+b&password=p%40ss");
+        assertThat(p.username()).isEqualTo("a+b");
+        assertThat(p.password()).isEqualTo("p@ss");
+    }
+
+    @Test
+    void toleratesMalformedPercentEscapesInParameterValues() {
+        ParsedConnection p = parser.parse("jdbc:postgresql://h/db?password=ab%zz");
+        assertThat(p.password()).isEqualTo("ab%zz");
+        assertThat(p.jdbcUrl()).isEqualTo("jdbc:postgresql://h/db");
+
+        ParsedConnection trailing = parser.parse("jdbc:postgresql://h/db?password=100%");
+        assertThat(trailing.password()).isEqualTo("100%");
+    }
+
+    @Test
+    void toleratesInvalidUtf8PercentEscapesInParameterValues() {
+        ParsedConnection p = parser.parse("jdbc:postgresql://h/db?password=ab%cd");
+        assertThat(p.password()).isEqualTo("ab%cd");
     }
 
     @Test

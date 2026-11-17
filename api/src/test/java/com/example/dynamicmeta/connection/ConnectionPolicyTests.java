@@ -89,6 +89,17 @@ class ConnectionPolicyTests {
         assertThatCode(() -> DEFAULT.validate(pc)).doesNotThrowAnyException();
     }
 
+    @Test
+    void credentialParametersAreNotRejected() {
+        // The parser removes user/password parameters before the policy sees
+        // them (they become connection properties), so they are no longer
+        // rejectable URL parameters.
+        ParsedConnection parsed = new ConnectionStringParser().parse(
+                "jdbc:postgresql://host/db?user=u&password=p");
+        assertThat(parsed.parameters()).doesNotContainKeys("user", "password");
+        assertThatCode(() -> DEFAULT.validate(parsed)).doesNotThrowAnyException();
+    }
+
     // -------------------------------------------------------------------
     // Dangerous parameters rejected per database type
     // -------------------------------------------------------------------
