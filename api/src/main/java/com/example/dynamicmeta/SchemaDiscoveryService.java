@@ -1,5 +1,6 @@
 package com.example.dynamicmeta;
 
+import com.example.dynamicmeta.connection.ConnectionRejectedException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -64,7 +65,7 @@ public class SchemaDiscoveryService {
     /** Opens a one-off JDBC connection without replacing the application's DataSource. */
     public Map<String, Object> discover(ConnectionRequest request) throws SQLException {
         if (!properties.isExplicitConnectionsEnabled()) {
-            throw new IllegalStateException("Explicit database connections are disabled");
+            throw new ConnectionRejectedException("Explicit database connections are disabled");
         }
         ResolvedConnection resolved = resolve(request);
         if (request.driverClassName() != null && !request.driverClassName().isBlank()) {

@@ -1,6 +1,9 @@
 package com.example.dynamicmeta;
 
+import com.example.dynamicmeta.connection.ConnectionBusyException;
+import com.example.dynamicmeta.connection.ConnectionRejectedException;
 import com.example.dynamicmeta.connection.SecretRedactor;
+import com.example.dynamicmeta.connection.UnsupportedDatabaseException;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -12,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.sql.SQLTimeoutException;
 import java.sql.SQLException;
 import java.util.List;
 import java.util.Map;
@@ -56,9 +60,33 @@ public class SchemaDiscoveryController {
                 request.options() == null ? null : request.options().entityNamePrefix());
     }
 
-    @ExceptionHandler({IllegalArgumentException.class, IllegalStateException.class})
-    public ResponseEntity<Map<String, String>> badRequest(RuntimeException exception) {
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<Map<String, String>> badRequest(IllegalArgumentException exception) {
         return ResponseEntity.badRequest().body(Map.of("error", SecretRedactor.redact(exception.getMessage())));
+    }
+
+    @ExceptionHandler(ConnectionRejectedException.class)
+    public ResponseEntity<Map<String, String>> connectionRejected(ConnectionRejectedException exception) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(Map.of("error", SecretRedactor.redact(exception.getMessage())));
+    }
+
+    @ExceptionHandler(UnsupportedDatabaseException.class)
+    public ResponseEntity<Map<String, String>> unsupportedDatabase(UnsupportedDatabaseException exception) {
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+                .body(Map.of("error", SecretRedactor.redact(exception.getMessage())));
+    }
+
+    @ExceptionHandler(ConnectionBusyException.class)
+    public ResponseEntity<Map<String, String>> connectionBusy(ConnectionBusyException exception) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .body(Map.of("error", SecretRedactor.redact(exception.getMessage())));
+    }
+
+    @ExceptionHandler(SQLTimeoutException.class)
+    public ResponseEntity<Map<String, String>> connectionTimeout(SQLTimeoutException exception) {
+        return ResponseEntity.status(HttpStatus.GATEWAY_TIMEOUT)
+                .body(Map.of("error", SecretRedactor.redact(exception.getMessage())));
     }
 
     @ExceptionHandler(SQLException.class)
