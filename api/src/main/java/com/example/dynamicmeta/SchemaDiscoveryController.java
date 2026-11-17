@@ -51,6 +51,12 @@ public class SchemaDiscoveryController {
         return discoveryService.discover(request);
     }
 
+    @PostMapping("/test-connection")
+    public Map<String, Object> testConnection(
+            @RequestBody SchemaDiscoveryService.ConnectionRequest request) throws SQLException {
+        return discoveryService.testConnection(request);
+    }
+
     @PostMapping("/to-spring-metadata")
     public Map<String, Object> toSpringMetadata(@RequestBody MetadataRequest request) {
         if (request == null || request.schema() == null) {

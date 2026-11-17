@@ -92,6 +92,86 @@ public class SchemaDiscoveryService {
         }
     }
 
+    /**
+     * Tests a connection without reading any table or column metadata.
+     * Uses the same parser, policy, factory and concurrency limit as {@link #discover(ConnectionRequest)}.
+     *
+     * @return map with databaseType, productName, productVersion, driverName, driverVersion, readOnly, latencyMs
+     */
+    public Map<String, Object> testConnection(ConnectionRequest request) throws SQLException {
+        if (!properties.isExplicitConnectionsEnabled()) {
+            throw new ConnectionRejectedException("Explicit database connections are disabled");
+        }
+        boolean acquired;
+        try {
+            acquired = explicitConnectionSemaphore.tryAcquire(PERMIT_WAIT_SECONDS, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new ConnectionBusyException(TOO_MANY_CONNECTIONS_MSG);
+        }
+        if (!acquired) {
+            throw new ConnectionBusyException(TOO_MANY_CONNECTIONS_MSG);
+        }
+        try {
+            return doTestConnection(request);
+        } finally {
+            explicitConnectionSemaphore.release();
+        }
+    }
+
+    private Map<String, Object> doTestConnection(ConnectionRequest request) throws SQLException {
+        ParsedConnection parsed = new ConnectionStringParser().parse(request.connectionString());
+        policy.validate(parsed);
+        String expectedDriver = parsed.databaseType().getDriverClassName();
+        if (request.driverClassName() != null && !request.driverClassName().isBlank()) {
+            if (!expectedDriver.equals(request.driverClassName())) {
+                throw new IllegalArgumentException(
+                        "Unexpected driver class name: expected " + expectedDriver +
+                        " for " + parsed.databaseType().id());
+            }
+        }
+        if (!driverAvailable(expectedDriver)) {
+            throw new UnsupportedDatabaseException(
+                    "JDBC driver " + expectedDriver + " is not on the classpath. " +
+                    "Add the required JDBC driver as a dependency.");
+        }
+
+        Connection connection;
+        if (jdbcConnectionFactory != null) {
+            connection = jdbcConnectionFactory.open(parsed,
+                    request.username(), request.password(), request.ssl());
+        } else {
+            connection = openConnectionDirectly(parsed, request);
+        }
+
+        try {
+            return readConnectionInfo(connection, parsed);
+        } finally {
+            try {
+                connection.close();
+            } catch (SQLException ignored) {
+            }
+        }
+    }
+
+    private static Map<String, Object> readConnectionInfo(Connection connection, ParsedConnection parsed)
+            throws SQLException {
+        long start = System.currentTimeMillis();
+        DatabaseMetaData meta = connection.getMetaData();
+        boolean readOnly = connection.isReadOnly();
+        long latencyMs = System.currentTimeMillis() - start;
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("databaseType", parsed.databaseType().id());
+        result.put("productName", meta.getDatabaseProductName());
+        result.put("productVersion", meta.getDatabaseProductVersion());
+        result.put("driverName", meta.getDriverName());
+        result.put("driverVersion", meta.getDriverVersion());
+        result.put("readOnly", readOnly);
+        result.put("latencyMs", latencyMs);
+        return result;
+    }
+
     /** Opens a one-off JDBC connection without replacing the application's DataSource. */
     public Map<String, Object> discover(ConnectionRequest request) throws SQLException {
         if (!properties.isExplicitConnectionsEnabled()) {
