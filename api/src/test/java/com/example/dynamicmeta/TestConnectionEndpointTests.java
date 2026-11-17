@@ -2,6 +2,8 @@ package com.example.dynamicmeta;
 
 import com.example.dynamicmeta.connection.ConnectionPolicy;
 import com.example.dynamicmeta.connection.ConnectionRejectedException;
+import com.example.dynamicmeta.connection.JdbcConnectionFactory;
+import com.example.dynamicmeta.connection.ParsedConnection;
 import org.h2.jdbcx.JdbcDataSource;
 import org.junit.jupiter.api.Test;
 
@@ -9,6 +11,7 @@ import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
@@ -27,7 +30,7 @@ class TestConnectionEndpointTests {
         SchemaToEntityProperties props = new SchemaToEntityProperties();
         props.setAllowEmbeddedDatabases(true);
         SchemaDiscoveryService service = new SchemaDiscoveryService(
-                ds, props, ALLOW_EMBEDDED);
+                ds, props, ALLOW_EMBEDDED, factory());
 
         SchemaDiscoveryService.ConnectionRequest request = new SchemaDiscoveryService.ConnectionRequest(
                 "jdbc:h2:mem:testconn;DB_CLOSE_DELAY=-1", "sa", "", "PUBLIC",
@@ -45,7 +48,8 @@ class TestConnectionEndpointTests {
 
         assertThat(result.get("databaseType")).isEqualTo("h2");
         assertThat((String) result.get("productName")).containsIgnoringCase("h2");
-        // H2 connections via DriverManager are read-write by default
+        // The factory requests a read-only session, but H2's isReadOnly()
+        // reports the database state and stays read-write for in-memory DBs.
         assertThat((Boolean) result.get("readOnly")).isFalse();
         assertThat(((Number) result.get("latencyMs")).longValue()).isGreaterThanOrEqualTo(0L);
 
@@ -57,6 +61,38 @@ class TestConnectionEndpointTests {
     }
 
     @Test
+    void latencyMsIncludesOpeningTheConnection() throws Exception {
+        JdbcDataSource ds = dataSource("testconn4");
+        createMinimalSchema(ds);
+
+        JdbcConnectionFactory slowFactory = new JdbcConnectionFactory(Duration.ZERO, Duration.ZERO) {
+            @Override
+            public Connection open(ParsedConnection parsed, String username, String password, Boolean ssl)
+                    throws SQLException {
+                try {
+                    Thread.sleep(40);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                return ds.getConnection();
+            }
+        };
+
+        SchemaToEntityProperties props = new SchemaToEntityProperties();
+        props.setAllowEmbeddedDatabases(true);
+        SchemaDiscoveryService service = new SchemaDiscoveryService(
+                ds, props, ALLOW_EMBEDDED, slowFactory);
+
+        SchemaDiscoveryService.ConnectionRequest request = new SchemaDiscoveryService.ConnectionRequest(
+                "jdbc:h2:mem:testconn4;DB_CLOSE_DELAY=-1", "sa", "", "PUBLIC",
+                List.of(), null, null);
+
+        Map<String, Object> result = service.testConnection(request);
+
+        assertThat(((Number) result.get("latencyMs")).longValue()).isGreaterThanOrEqualTo(30L);
+    }
+
+    @Test
     void disabledExplicitConnectionsReturns403() throws Exception {
         JdbcDataSource ds = dataSource("testconn2");
         createMinimalSchema(ds);
@@ -64,7 +100,7 @@ class TestConnectionEndpointTests {
         SchemaToEntityProperties props = new SchemaToEntityProperties();
         props.setExplicitConnectionsEnabled(false);
         SchemaDiscoveryService service = new SchemaDiscoveryService(
-                ds, props, ALLOW_EMBEDDED);
+                ds, props, ALLOW_EMBEDDED, factory());
 
         SchemaDiscoveryService.ConnectionRequest request = new SchemaDiscoveryService.ConnectionRequest(
                 "jdbc:h2:mem:testconn2;DB_CLOSE_DELAY=-1", "sa", "s3cretPass", "PUBLIC",
@@ -83,7 +119,7 @@ class TestConnectionEndpointTests {
         SchemaToEntityProperties props = new SchemaToEntityProperties();
         props.setAllowEmbeddedDatabases(true);
         SchemaDiscoveryService service = new SchemaDiscoveryService(
-                ds, props, ALLOW_EMBEDDED);
+                ds, props, ALLOW_EMBEDDED, factory());
 
         // Send credentials in the request body; they must never appear in the response
         SchemaDiscoveryService.ConnectionRequest request = new SchemaDiscoveryService.ConnectionRequest(
@@ -102,6 +138,10 @@ class TestConnectionEndpointTests {
         assertThat(body).contains("productName");
         assertThat(body).contains("readOnly");
         assertThat(body).contains("latencyMs");
+    }
+
+    private static JdbcConnectionFactory factory() {
+        return new JdbcConnectionFactory(Duration.ZERO, Duration.ZERO);
     }
 
     private static JdbcDataSource dataSource(String database) {

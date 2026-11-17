@@ -1,6 +1,7 @@
 package com.example.dynamicmeta;
 
 import com.example.dynamicmeta.connection.ConnectionBusyException;
+import com.example.dynamicmeta.connection.ConnectionException;
 import com.example.dynamicmeta.connection.ConnectionRejectedException;
 import com.example.dynamicmeta.connection.SecretRedactor;
 import com.example.dynamicmeta.connection.UnsupportedDatabaseException;
@@ -86,6 +87,12 @@ public class SchemaDiscoveryController {
     @ExceptionHandler(ConnectionBusyException.class)
     public ResponseEntity<Map<String, String>> connectionBusy(ConnectionBusyException exception) {
         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .body(Map.of("error", SecretRedactor.redact(exception.getMessage())));
+    }
+
+    @ExceptionHandler(ConnectionException.class)
+    public ResponseEntity<Map<String, String>> connectionException(ConnectionException exception) {
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
                 .body(Map.of("error", SecretRedactor.redact(exception.getMessage())));
     }
 

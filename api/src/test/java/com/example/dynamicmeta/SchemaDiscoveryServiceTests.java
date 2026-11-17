@@ -1,6 +1,7 @@
 package com.example.dynamicmeta;
 
 import com.example.dynamicmeta.connection.ConnectionPolicy;
+import com.example.dynamicmeta.connection.JdbcConnectionFactory;
 import org.h2.jdbcx.JdbcDataSource;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
@@ -10,6 +11,7 @@ import org.springframework.boot.test.context.runner.WebApplicationContextRunner;
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.Statement;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
@@ -21,10 +23,10 @@ class SchemaDiscoveryServiceTests {
 
     @Test
     void discoversTheContainingApplicationsDataSource() throws Exception {
-        JdbcDataSource dataSource = dataSource("host");
+        JdbcDataSource dataSource = dataSource("discovery_host");
         createSchema(dataSource);
         SchemaDiscoveryService service = new SchemaDiscoveryService(
-                dataSource, new SchemaToEntityProperties(), DEFAULT_POLICY);
+                dataSource, new SchemaToEntityProperties(), DEFAULT_POLICY, factory());
 
         Map<String, Object> result = service.discover("PUBLIC", List.of());
 
@@ -41,16 +43,16 @@ class SchemaDiscoveryServiceTests {
 
     @Test
     void supportsAnExplicitJdbcUrlWithoutReplacingTheHostDataSource() throws Exception {
-        JdbcDataSource host = dataSource("host2");
-        JdbcDataSource external = dataSource("external");
+        JdbcDataSource host = dataSource("discovery_host2");
+        JdbcDataSource external = dataSource("discovery_external");
         createSchema(external);
         SchemaToEntityProperties props = new SchemaToEntityProperties();
         props.setAllowEmbeddedDatabases(true);
         SchemaDiscoveryService service = new SchemaDiscoveryService(
-                host, props, new ConnectionPolicy(List.of(), true));
+                host, props, new ConnectionPolicy(List.of(), true), factory());
 
         Map<String, Object> result = service.discover(new SchemaDiscoveryService.ConnectionRequest(
-                "jdbc:h2:mem:external;DB_CLOSE_DELAY=-1", "sa", "", "PUBLIC",
+                "jdbc:h2:mem:discovery_external;DB_CLOSE_DELAY=-1", "sa", "", "PUBLIC",
                 List.of("CUSTOMERS"), null, null));
 
         @SuppressWarnings("unchecked")
@@ -78,6 +80,10 @@ class SchemaDiscoveryServiceTests {
                     assertThat(context).hasSingleBean(SchemaDiscoveryService.class);
                     assertThat(context).hasSingleBean(SchemaDiscoveryController.class);
                 });
+    }
+
+    private static JdbcConnectionFactory factory() {
+        return new JdbcConnectionFactory(Duration.ZERO, Duration.ZERO);
     }
 
     private static JdbcDataSource dataSource(String database) {

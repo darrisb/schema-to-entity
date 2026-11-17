@@ -1,11 +1,13 @@
 package com.example.dynamicmeta;
 
 import com.example.dynamicmeta.connection.ConnectionPolicy;
+import com.example.dynamicmeta.connection.JdbcConnectionFactory;
 import com.example.dynamicmeta.connection.UnsupportedDatabaseException;
 import org.h2.jdbcx.JdbcDataSource;
 import org.junit.jupiter.api.Test;
 
 import java.sql.SQLException;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
@@ -23,7 +25,8 @@ class DriverValidationTests {
         // explicitConnectionsEnabled defaults to true
         return new SchemaDiscoveryService(
                 new JdbcDataSource(), new SchemaToEntityProperties(),
-                new ConnectionPolicy(List.of(), true));
+                new ConnectionPolicy(List.of(), true),
+                new JdbcConnectionFactory(Duration.ZERO, Duration.ZERO));
     }
 
     @Test

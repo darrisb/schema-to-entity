@@ -18,7 +18,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
-import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Types;
@@ -30,7 +29,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Properties;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
@@ -50,13 +49,6 @@ public class SchemaDiscoveryService {
     private final JdbcConnectionFactory jdbcConnectionFactory;
     private final Semaphore explicitConnectionSemaphore;
 
-    /** Constructor for existing tests that do not require explicit connections. */
-    public SchemaDiscoveryService(DataSource dataSource,
-                                  SchemaToEntityProperties properties,
-                                  ConnectionPolicy policy) {
-        this(dataSource, properties, policy, null);
-    }
-
     public SchemaDiscoveryService(DataSource dataSource,
                                   SchemaToEntityProperties properties,
                                   ConnectionPolicy policy,
@@ -64,7 +56,8 @@ public class SchemaDiscoveryService {
         this.dataSource = dataSource;
         this.properties = properties;
         this.policy = policy;
-        this.jdbcConnectionFactory = jdbcConnectionFactory;
+        this.jdbcConnectionFactory = Objects.requireNonNull(jdbcConnectionFactory,
+                "jdbcConnectionFactory");
         int max = Math.max(properties.getMaxConcurrentExplicitConnections(), 1);
         this.explicitConnectionSemaphore = new Semaphore(max, true);
     }
@@ -100,6 +93,16 @@ public class SchemaDiscoveryService {
      * @return map with databaseType, productName, productVersion, driverName, driverVersion, readOnly, latencyMs
      */
     public Map<String, Object> testConnection(ConnectionRequest request) throws SQLException {
+        return withExplicitConnection(request, SchemaDiscoveryService::readConnectionInfo);
+    }
+
+    /**
+     * Runs the shared explicit-connection pipeline: enabled check, permit,
+     * parse, policy, driver check, open through the factory, then the callback.
+     * The permit is always released and the connection always closed.
+     */
+    private <T> T withExplicitConnection(ConnectionRequest request, ConnectionCallback<T> callback)
+            throws SQLException {
         if (!properties.isExplicitConnectionsEnabled()) {
             throw new ConnectionRejectedException("Explicit database connections are disabled");
         }
@@ -114,53 +117,48 @@ public class SchemaDiscoveryService {
             throw new ConnectionBusyException(TOO_MANY_CONNECTIONS_MSG);
         }
         try {
-            return doTestConnection(request);
+            ParsedConnection parsed = new ConnectionStringParser().parse(request.connectionString());
+            policy.validate(parsed);
+            String expectedDriver = parsed.databaseType().getDriverClassName();
+            if (request.driverClassName() != null && !request.driverClassName().isBlank()) {
+                if (!expectedDriver.equals(request.driverClassName())) {
+                    throw new IllegalArgumentException(
+                            "Unexpected driver class name: expected " + expectedDriver +
+                            " for " + parsed.databaseType().id());
+                }
+            }
+            if (!driverAvailable(expectedDriver)) {
+                throw new UnsupportedDatabaseException(
+                        "JDBC driver " + expectedDriver + " is not on the classpath. " +
+                        "Add the required JDBC driver as a dependency.");
+            }
+
+            long openedAtMillis = System.currentTimeMillis();
+            Connection connection = jdbcConnectionFactory.open(parsed,
+                    request.username(), request.password(), request.ssl());
+            try {
+                return callback.use(connection, parsed, openedAtMillis);
+            } finally {
+                try {
+                    connection.close();
+                } catch (SQLException ignored) {
+                }
+            }
         } finally {
             explicitConnectionSemaphore.release();
         }
     }
 
-    private Map<String, Object> doTestConnection(ConnectionRequest request) throws SQLException {
-        ParsedConnection parsed = new ConnectionStringParser().parse(request.connectionString());
-        policy.validate(parsed);
-        String expectedDriver = parsed.databaseType().getDriverClassName();
-        if (request.driverClassName() != null && !request.driverClassName().isBlank()) {
-            if (!expectedDriver.equals(request.driverClassName())) {
-                throw new IllegalArgumentException(
-                        "Unexpected driver class name: expected " + expectedDriver +
-                        " for " + parsed.databaseType().id());
-            }
-        }
-        if (!driverAvailable(expectedDriver)) {
-            throw new UnsupportedDatabaseException(
-                    "JDBC driver " + expectedDriver + " is not on the classpath. " +
-                    "Add the required JDBC driver as a dependency.");
-        }
-
-        Connection connection;
-        if (jdbcConnectionFactory != null) {
-            connection = jdbcConnectionFactory.open(parsed,
-                    request.username(), request.password(), request.ssl());
-        } else {
-            connection = openConnectionDirectly(parsed, request);
-        }
-
-        try {
-            return readConnectionInfo(connection, parsed);
-        } finally {
-            try {
-                connection.close();
-            } catch (SQLException ignored) {
-            }
-        }
+    @FunctionalInterface
+    private interface ConnectionCallback<T> {
+        T use(Connection connection, ParsedConnection parsed, long openedAtMillis) throws SQLException;
     }
 
-    private static Map<String, Object> readConnectionInfo(Connection connection, ParsedConnection parsed)
-            throws SQLException {
-        long start = System.currentTimeMillis();
+    private static Map<String, Object> readConnectionInfo(Connection connection, ParsedConnection parsed,
+                                                          long openedAtMillis) throws SQLException {
         DatabaseMetaData meta = connection.getMetaData();
         boolean readOnly = connection.isReadOnly();
-        long latencyMs = System.currentTimeMillis() - start;
+        long latencyMs = System.currentTimeMillis() - openedAtMillis;
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("databaseType", parsed.databaseType().id());
@@ -175,74 +173,10 @@ public class SchemaDiscoveryService {
 
     /** Opens a one-off JDBC connection without replacing the application's DataSource. */
     public Map<String, Object> discover(ConnectionRequest request) throws SQLException {
-        if (!properties.isExplicitConnectionsEnabled()) {
-            throw new ConnectionRejectedException("Explicit database connections are disabled");
-        }
-        boolean acquired;
-        try {
-            acquired = explicitConnectionSemaphore.tryAcquire(PERMIT_WAIT_SECONDS, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new ConnectionBusyException(TOO_MANY_CONNECTIONS_MSG);
-        }
-        if (!acquired) {
-            throw new ConnectionBusyException(TOO_MANY_CONNECTIONS_MSG);
-        }
-        try {
-            return doDiscover(request);
-        } finally {
-            explicitConnectionSemaphore.release();
-        }
-    }
-
-    private Map<String, Object> doDiscover(ConnectionRequest request) throws SQLException {
-        ParsedConnection parsed = new ConnectionStringParser().parse(request.connectionString());
-        policy.validate(parsed);
-        String expectedDriver = parsed.databaseType().getDriverClassName();
-        if (request.driverClassName() != null && !request.driverClassName().isBlank()) {
-            if (!expectedDriver.equals(request.driverClassName())) {
-                throw new IllegalArgumentException(
-                        "Unexpected driver class name: expected " + expectedDriver +
-                        " for " + parsed.databaseType().id());
-            }
-        }
-        if (!driverAvailable(expectedDriver)) {
-            throw new UnsupportedDatabaseException(
-                    "JDBC driver " + expectedDriver + " is not on the classpath. " +
-                    "Add the required JDBC driver as a dependency.");
-        }
-
-        Connection connection;
-        if (jdbcConnectionFactory != null) {
-            connection = jdbcConnectionFactory.open(parsed,
-                    request.username(), request.password(), request.ssl());
-        } else {
-            // Fallback for tests that don't supply a factory.
-            connection = openConnectionDirectly(parsed, request);
-        }
-
-        try {
-            return inspect(connection, firstNonBlank(request.schemaName(), properties.getSchema()),
-                    safeTables(request.tables()));
-        } finally {
-            try {
-                connection.close();
-            } catch (SQLException ignored) {
-            }
-        }
-    }
-
-    private static Connection openConnectionDirectly(ParsedConnection parsed,
-                                                    ConnectionRequest request) throws SQLException {
-        Properties connectionProperties = new Properties();
-        putIfPresent(connectionProperties, "user",
-                firstNonBlank(request.username(), parsed.username()));
-        putIfPresent(connectionProperties, "password",
-                firstNonBlank(request.password(), parsed.password()));
-        if (Boolean.TRUE.equals(request.ssl())) {
-            connectionProperties.setProperty("sslmode", "require");
-        }
-        return DriverManager.getConnection(parsed.jdbcUrl(), connectionProperties);
+        return withExplicitConnection(request, (connection, parsed, openedAtMillis) ->
+                inspect(connection,
+                        firstNonBlank(request.schemaName(), properties.getSchema()),
+                        safeTables(request.tables())));
     }
 
     Map<String, Object> inspect(Connection connection, String requestedSchema, List<String> tableFilter)
@@ -365,10 +299,6 @@ public class SchemaDiscoveryService {
         if (normalized.contains("microsoft") || normalized.contains("sql server")) return "sqlserver";
         if (normalized.contains("oracle")) return "oracle";
         return normalized.replaceAll("[^a-z0-9]+", "-").replaceAll("(^-|-$)", "");
-    }
-
-    private static void putIfPresent(Properties properties, String key, String value) {
-        if (value != null && !value.isBlank()) properties.setProperty(key, value);
     }
 
     private static String firstNonBlank(String first, String second) {
