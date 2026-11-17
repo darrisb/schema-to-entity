@@ -52,6 +52,7 @@ public record ParsedConnection(
      */
     public static String canonicalJdbcUrl(DatabaseType type, String host, Integer port,
                                           String database, Map<String, String> parameters) {
+        validateDatabaseName(type, database);
         return switch (type) {
             case POSTGRESQL, MYSQL, MARIADB -> {
                 StringBuilder sb = new StringBuilder("jdbc:")
@@ -67,9 +68,9 @@ public record ParsedConnection(
                 StringBuilder sb = new StringBuilder("jdbc:sqlserver://");
                 appendHost(sb, host, port);
                 if (!containsDatabaseName(parameters) && database != null) {
-                    sb.append(";databaseName=").append(encodeParameterValue(database, ';'));
+                    sb.append(";databaseName=").append(database);
                 }
-                appendParameters(sb, parameters, ';', ';');
+                appendSqlServerParameters(sb, parameters);
                 yield sb.toString();
             }
             case ORACLE -> {
@@ -88,6 +89,47 @@ public record ParsedConnection(
             case H2 -> throw new UnsupportedOperationException(
                     "H2 JDBC URLs are built by ConnectionStringParser");
         };
+    }
+
+    /**
+     * Database (or Oracle service/SID) names go into the URL unencoded, so they are
+     * limited to characters that cannot change the URL structure. Without this, a
+     * name such as {@code app;allowLoadLocalInfile=true} reaches the driver verbatim.
+     */
+    private static void validateDatabaseName(DatabaseType type, String database) {
+        if (database == null || type == DatabaseType.H2) {
+            return;
+        }
+        String name = type == DatabaseType.ORACLE && database.startsWith("/")
+                ? database.substring(1) : database;
+        if (name.isEmpty() || name.length() > 128 || !DATABASE_NAME_PATTERN.matcher(name).matches()) {
+            throw new IllegalArgumentException(
+                    "Invalid connection string: database name may only contain letters, digits, "
+                            + "'_', '$', '.' and '-'");
+        }
+    }
+
+    private static final java.util.regex.Pattern DATABASE_NAME_PATTERN =
+            java.util.regex.Pattern.compile("[A-Za-z0-9_$.\\-]+");
+
+    /**
+     * SQL Server's driver does not percent-decode property values, so percent-encoding
+     * would corrupt them (a value of {@code My App} would arrive as {@code My%20App}).
+     * Values are emitted as-is, and values containing characters that could end or
+     * restructure a property ({@code ;}, {@code =}, braces) are rejected instead.
+     */
+    static void appendSqlServerParameters(StringBuilder sb, Map<String, String> parameters) {
+        for (Map.Entry<String, String> entry : parameters.entrySet()) {
+            String value = entry.getValue() == null ? "" : entry.getValue();
+            for (int i = 0; i < value.length(); i++) {
+                char c = value.charAt(i);
+                if (c == ';' || c == '=' || c == '{' || c == '}' || c < ' ' || c == 0x7F) {
+                    throw new IllegalArgumentException("Invalid connection string: value of "
+                            + entry.getKey() + " contains a character SQL Server URLs cannot carry");
+                }
+            }
+            sb.append(';').append(entry.getKey()).append('=').append(value);
+        }
     }
 
     private static void appendHost(StringBuilder sb, String host, Integer port) {

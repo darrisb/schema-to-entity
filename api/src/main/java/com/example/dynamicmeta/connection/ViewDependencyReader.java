@@ -24,12 +24,30 @@ public class ViewDependencyReader {
     private static final String VIEW_TABLE_USAGE_SQL =
             "SELECT view_name, table_name FROM information_schema.view_table_usage " +
             "WHERE view_catalog = ? AND view_schema = ?";
+    /**
+     * PostgreSQL's information_schema.view_table_usage only lists tables owned by the
+     * current role, so a read-only account that does not own the tables gets nothing.
+     * The system catalogs show dependencies to any role that can see the view, and they
+     * also cover materialized views, which information_schema omits.
+     */
+    private static final String POSTGRES_DEPENDENCIES_SQL =
+            "SELECT DISTINCT v.relname AS view_name, t.relname AS table_name " +
+            "FROM pg_catalog.pg_depend d " +
+            "JOIN pg_catalog.pg_rewrite r ON r.oid = d.objid " +
+            "JOIN pg_catalog.pg_class v ON v.oid = r.ev_class " +
+            "JOIN pg_catalog.pg_namespace vn ON vn.oid = v.relnamespace " +
+            "JOIN pg_catalog.pg_class t ON t.oid = d.refobjid " +
+            "WHERE d.classid = 'pg_catalog.pg_rewrite'::regclass " +
+            "AND d.refclassid = 'pg_catalog.pg_class'::regclass " +
+            "AND v.relkind IN ('v', 'm') AND t.relkind IN ('r', 'p') " +
+            "AND v.oid <> t.oid AND vn.nspname = ?";
     private static final String MYSQL_VIEW_TABLE_USAGE_SQL =
             "SELECT view_name, table_name FROM information_schema.view_table_usage " +
             "WHERE view_schema = ?";
     private static final String ORACLE_DEPENDENCIES_SQL =
             "SELECT name, referenced_name FROM ALL_DEPENDENCIES " +
-            "WHERE owner = ? AND TYPE = 'VIEW' AND REFERENCED_TYPE = 'TABLE'";
+            "WHERE owner = ? AND referenced_owner = owner " +
+            "AND TYPE = 'VIEW' AND REFERENCED_TYPE = 'TABLE'";
 
     /**
      * Reads view dependencies for one catalog/schema.
@@ -86,7 +104,8 @@ public class ViewDependencyReader {
     /** Returns the catalog query for the database type, or null when it has no view catalog. */
     private static String sqlFor(DatabaseType databaseType) {
         return switch (databaseType) {
-            case POSTGRESQL, SQLSERVER -> VIEW_TABLE_USAGE_SQL;
+            case POSTGRESQL -> POSTGRES_DEPENDENCIES_SQL;
+            case SQLSERVER -> VIEW_TABLE_USAGE_SQL;
             case MYSQL -> MYSQL_VIEW_TABLE_USAGE_SQL;
             case ORACLE -> ORACLE_DEPENDENCIES_SQL;
             case MARIADB, H2 -> null;
@@ -97,7 +116,8 @@ public class ViewDependencyReader {
     private static void bind(PreparedStatement statement, DatabaseType databaseType,
                              String catalog, String schema) throws SQLException {
         switch (databaseType) {
-            case POSTGRESQL, SQLSERVER -> {
+            case POSTGRESQL -> statement.setString(1, schema);
+            case SQLSERVER -> {
                 statement.setString(1, catalog);
                 statement.setString(2, schema);
             }

@@ -114,6 +114,11 @@ Oracle does not accept a URI scheme because its JDBC URL format is not URI-compa
 
 `user` and `password` may also be supplied as URL parameters (any case), for example `jdbc:postgresql://host/db?user=u&password=p`. They are removed from the URL and passed to the driver as connection properties, so the rebuilt JDBC URL never contains credentials.
 
+The URL sent to the driver is always rebuilt from the parsed host, port, database and allowlisted parameters; the original string is never passed through. Two limits follow from that:
+
+- Database, service and SID names may only contain letters, digits, `_`, `$`, `.` and `-` (up to 128 characters).
+- SQL Server parameter values cannot contain `;`, `=` or braces, because the SQL Server driver does not decode escaped values.
+
 ### URL parameter allowlist
 
 For security, only an allowlisted set of URL parameters may appear in a connection string. Any parameter not on the list causes the connection to be rejected with HTTP 403.
@@ -123,7 +128,7 @@ For security, only an allowlisted set of URL parameters may appear in a connecti
 | PostgreSQL | `ssl`, `sslmode`, `applicationname`, `currentschema` |
 | MySQL / MariaDB | `usessl`, `sslmode`, `requiressl`, `servertimezone`, `characterencoding` |
 | SQL Server | `encrypt`, `trustservercertificate`, `databasename`, `instancename`, `applicationname` |
-| Oracle | *(none – TNS aliases are the recommended way to configure connections)* |
+| Oracle | *(none – only `@//host:port/service` and `@host:port:sid` are accepted; TNS descriptors, aliases and `?` parameters are rejected)* |
 | H2 | `db_close_delay`, `db_close_on_exit`, `file_lock`, `cache_size`, `max_row_fetch`, `query_timeout`, `access_mode_data`, `compress`, `ifexists` |
 
 Timeout parameters (`connecttimeout`, `sockettimeout`, `logintimeout`) are never allowed in the connection string. Connection and socket timeouts come only from the server settings `schema-to-entity.connect-timeout` and `schema-to-entity.socket-timeout`.

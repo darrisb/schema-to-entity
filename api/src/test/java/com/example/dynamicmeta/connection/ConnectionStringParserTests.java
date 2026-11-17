@@ -628,15 +628,37 @@ class ConnectionStringParserTests {
         // The rebuilt URL parses back to exactly the same parameter map.
         assertThat(parser.parse(p.jdbcUrl()).parameters()).isEqualTo(p.parameters());
 
-        // ';' form: ';', '=' and '%' must be escaped.
+        // SQL Server does not percent-decode values, so a value that decodes to
+        // ';' or '=' cannot be carried safely and is rejected outright.
+        assertThatThrownBy(() -> parser.parse(
+                "jdbc:sqlserver://h:1433;databaseName=db;applicationName=x%3By%3Dw%26v%23z"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("applicationName");
+
+        // Other characters reach the driver unencoded.
         ParsedConnection s = parser.parse(
-                "jdbc:sqlserver://h:1433;databaseName=db;applicationName=x%3By%3Dw%26v%23z");
-        assertThat(s.parameters())
-                .containsEntry("databaseName", "db")
-                .containsEntry("applicationName", "x;y=w&v#z");
+                "jdbc:sqlserver://h:1433;databaseName=db;applicationName=x&v#z");
         assertThat(s.jdbcUrl())
-                .isEqualTo("jdbc:sqlserver://h:1433;databaseName=db;applicationName=x%3By%3Dw&v#z");
+                .isEqualTo("jdbc:sqlserver://h:1433;databaseName=db;applicationName=x&v#z");
         assertThat(parser.parse(s.jdbcUrl()).parameters()).isEqualTo(s.parameters());
+    }
+
+    @Test
+    void databaseNamesCannotCarryUrlSyntax() {
+        for (String url : new String[]{
+                "jdbc:mysql://db.example.com/app;allowLoadLocalInfile=true",
+                "jdbc:mariadb://db.example.com/app;allowLocalInfile=true",
+                "jdbc:postgresql://db.example.com/app;socketFactory=evil",
+                "jdbc:mysql://db.example.com/app%3FallowLoadLocalInfile=true",
+                "postgres://u:p@db.example.com/app%3FsocketFactory%3Dx",
+                "sqlserver://u:p@db.example.com/app;socketFactoryClass=x"}) {
+            assertThatThrownBy(() -> parser.parse(url))
+                    .as(url)
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("database name");
+        }
+        assertThat(parser.parse("jdbc:postgresql://h/my-app_db.v2$").database())
+                .isEqualTo("my-app_db.v2$");
     }
 
     @Test
