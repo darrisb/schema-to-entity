@@ -3,13 +3,34 @@ package com.example.dynamicmeta.connection;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.function.Function;
+import java.util.regex.Pattern;
 
 /**
  * Parses a connection string (JDBC URL or URI form) into a normalised
  * {@link ParsedConnection} containing the database type, JDBC URL, host,
  * port, database name, credentials (from URI forms only) and parameters.
+ * <p>
+ * JDBC URLs are parsed strictly: only the documented simple forms are
+ * accepted and anything that could hide connection parameters from
+ * {@link ConnectionPolicy} (multi-host lists, sub-protocols, TNS
+ * descriptors, unparsed query strings, ...) is rejected with an
+ * {@link IllegalArgumentException}. Error messages never include the
+ * supplied connection string because it may contain a password.
  */
 public class ConnectionStringParser {
+
+    private static final Pattern HOSTNAME_PATTERN =
+            Pattern.compile("[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?");
+    private static final Pattern PARAMETER_KEY_PATTERN =
+            Pattern.compile("[A-Za-z0-9._-]+");
+    private static final Pattern INSTANCE_PATTERN =
+            Pattern.compile("[A-Za-z0-9._-]+");
+    private static final Pattern IPV6_LITERAL_PATTERN =
+            Pattern.compile("[0-9A-Fa-f:.]+");
+
+    /** Characters that must never appear in an authority (host[:port]). */
+    private static final String FORBIDDEN_AUTHORITY_CHARS = "(),=?@ \t\r\n";
 
     // -------------------------------------------------------------------
     // Public API
@@ -70,118 +91,211 @@ public class ConnectionStringParser {
                 "jdbc:mysql:, jdbc:mariadb:, jdbc:sqlserver:, jdbc:oracle:thin:, jdbc:h2:");
     }
 
-    /** Generic parser for postgresql, mysql, mariadb: jdbc:TYPE://host:port/db?key=val */
+    /**
+     * Generic parser for postgresql, mysql, mariadb:
+     * {@code jdbc:TYPE://host[:port][/database][?key=value&...]}.
+     * The {@code //} is mandatory and a query string is only accepted after
+     * a database path so that parameters can never hide inside the authority.
+     */
     private ParsedConnection parseJdbcGeneric(DatabaseType type, String fullUrl, String prefix) {
         String after = fullUrl.substring(prefix.length());
-        // Strip leading //
-        String content = after.startsWith("//") ? after.substring(2) : after;
-
-        String host = null;
-        Integer port = null;
-        String database = null;
-        Map<String, String> params = new LinkedHashMap<>();
-
-        // Find authority end: first / or ;
-        int endAuthority = firstOf(content, '/', ';');
-        String authority, rest;
-        if (endAuthority >= 0) {
-            authority = content.substring(0, endAuthority);
-            rest = content.substring(endAuthority);
-        } else {
-            authority = content;
-            rest = "";
+        if (!after.startsWith("//")) {
+            throw new IllegalArgumentException(
+                    "Invalid connection string: expected '//' after the JDBC prefix");
         }
+        String content = after.substring(2);
 
-        HostPort hp = parseHostPort(authority);
-        host = hp.host();
-        port = hp.port();
+        int endAuthority = content.indexOf('/');
+        String authority = endAuthority >= 0 ? content.substring(0, endAuthority) : content;
+        String rest = endAuthority >= 0 ? content.substring(endAuthority) : "";
 
-        // rest starts with / (path + optional ?query) or ;
-        ParsedResult pr = parsePathQueryParams(rest, params);
-        if (pr.database() != null) database = pr.database();
+        HostPort hp = parseAuthority(authority);
 
-        return new ParsedConnection(type, fullUrl, host, port, database,
+        Map<String, String> params = new LinkedHashMap<>();
+        String database = parseGenericPathAndQuery(rest, params);
+
+        return new ParsedConnection(type, fullUrl, hp.host(), hp.port(), database,
                 null, null, params);
     }
 
-    /** sqlserver: jdbc:sqlserver://host:port;databaseName=db;key=val */
+    /**
+     * Parse the {@code /database[?query]} part of a generic JDBC URL.
+     * A query string is only allowed when a database path precedes it.
+     */
+    private static String parseGenericPathAndQuery(String rest, Map<String, String> params) {
+        if (rest.isEmpty()) {
+            return null;
+        }
+        if (rest.charAt(0) == '?') {
+            throw new IllegalArgumentException(
+                    "Invalid connection string: query parameters require a database path");
+        }
+
+        String afterSlash = rest.substring(1);
+        int query = afterSlash.indexOf('?');
+        String database = query >= 0 ? afterSlash.substring(0, query) : afterSlash;
+        if (query >= 0) {
+            parseQueryParams(afterSlash.substring(query + 1), params);
+        }
+        return database.isEmpty() ? null : database;
+    }
+
+    /**
+     * sqlserver: {@code jdbc:sqlserver://host[\instance][:port][;key=value...]}.
+     */
     private ParsedConnection parseJdbcSqlServer(String fullUrl) {
         String content = fullUrl.substring("jdbc:sqlserver:".length());
-        if (content.startsWith("//")) {
-            content = content.substring(2);
+        if (!content.startsWith("//")) {
+            throw new IllegalArgumentException(
+                    "Invalid connection string: expected '//' after the JDBC prefix");
         }
+        content = content.substring(2);
 
-        String host = null;
-        Integer port = null;
-        String database = null;
-        Map<String, String> params = new LinkedHashMap<>();
+        int endAuthority = content.indexOf(';');
+        String authority = endAuthority >= 0 ? content.substring(0, endAuthority) : content;
+        String rest = endAuthority >= 0 ? content.substring(endAuthority) : "";
 
-        int endAuthority = firstOf(content, ';', '/');
-        String authority, rest;
-        if (endAuthority >= 0) {
-            authority = content.substring(0, endAuthority);
-            rest = content.substring(endAuthority);
+        String host;
+        Integer port;
+        if (authority.startsWith("[")) {
+            int close = authority.indexOf(']');
+            if (close < 0) {
+                throw new IllegalArgumentException(
+                        "Invalid connection string: malformed IPv6 host");
+            }
+            host = authority.substring(0, close + 1);
+            port = parseSqlServerRemainder(authority.substring(close + 1));
         } else {
-            authority = content;
-            rest = "";
+            int backslash = authority.indexOf('\\');
+            if (backslash >= 0) {
+                host = authority.substring(0, backslash);
+                port = parseSqlServerRemainder(authority.substring(backslash + 1));
+            } else {
+                HostPort hp = parseAuthority(authority);
+                host = hp.host();
+                port = hp.port();
+            }
+        }
+        if (!isValidHost(host)) {
+            throw new IllegalArgumentException("Invalid connection string: invalid host");
         }
 
-        HostPort hp = parseHostPort(authority);
-        host = hp.host();
-        port = hp.port();
-
-        // Parse ;key=value pairs (skip leading ; or /)
-        if (!rest.isEmpty() && (rest.charAt(0) == ';' || rest.charAt(0) == '/')) {
-            rest = rest.substring(1);
+        Map<String, String> params = new LinkedHashMap<>();
+        String database = null;
+        if (!rest.isEmpty()) {
+            ParsedResult pr = parseSemicolonParams(rest.substring(1), params, k -> null, true);
+            if (pr.database() != null) database = pr.database();
         }
-        ParsedResult pr = parseSemicolonParams(rest, params, k -> null);
-        if (pr.database() != null) database = pr.database();
 
         return new ParsedConnection(DatabaseType.SQLSERVER, fullUrl, host, port, database,
                 null, null, params);
     }
 
-    /** oracle: jdbc:oracle:thin:@//host:port/service or @host:port:sid */
+    /**
+     * Parse the part after an SQL Server host or IPv6 literal:
+     * empty, {@code :port}, {@code \instance} or {@code \instance:port}.
+     */
+    private static Integer parseSqlServerRemainder(String remainder) {
+        if (remainder.isEmpty()) {
+            return null;
+        }
+        if (remainder.charAt(0) == ':') {
+            return parsePort(remainder.substring(1));
+        }
+        int colon = remainder.indexOf(':');
+        String instance = colon >= 0 ? remainder.substring(0, colon) : remainder;
+        if (instance.isEmpty() || !INSTANCE_PATTERN.matcher(instance).matches()) {
+            throw new IllegalArgumentException(
+                    "Invalid connection string: invalid instance name");
+        }
+        return colon < 0 ? null : parsePort(remainder.substring(colon + 1));
+    }
+
+    /**
+     * oracle: only {@code @//host:port/service} or {@code @host:port:sid}.
+     * TNS descriptors, aliases and query strings are rejected.
+     */
     private ParsedConnection parseJdbcOracle(String fullUrl) {
         String after = fullUrl.substring("jdbc:oracle:thin:".length());
+        if (!after.startsWith("@")) {
+            throw new IllegalArgumentException(
+                    "Invalid Oracle connection string: expected " +
+                    "'@//host:port/service' or '@host:port:sid'");
+        }
+        String connect = after.substring(1);
+        if (connect.isEmpty()) {
+            throw new IllegalArgumentException("Invalid Oracle connection string: missing host");
+        }
+        if (connect.indexOf('?') >= 0) {
+            throw new IllegalArgumentException(
+                    "Invalid Oracle connection string: query parameters are not allowed");
+        }
 
-        String host = null;
-        Integer port = null;
-        String database = null;
+        String host;
+        Integer port;
+        String database;
 
-        if (after.startsWith("@")) {
-            String connect = after.substring(1);
-            if (connect.startsWith("//")) {
-                // //host:port/service
-                String rest = connect.substring(2);
-                int slash = rest.indexOf('/');
-                if (slash > 0) {
-                    HostPort hp = parseHostPort(rest.substring(0, slash));
-                    host = hp.host();
-                    port = hp.port();
-                    database = rest.substring(slash);
-                } else {
-                    HostPort hp = parseHostPort(rest);
-                    host = hp.host();
-                    port = hp.port();
-                }
-            } else {
-                // host:port:sid
-                int firstColon = connect.indexOf(':');
-                if (firstColon > 0) {
-                    host = connect.substring(0, firstColon);
-                    String rest = connect.substring(firstColon + 1);
-                    int secondColon = rest.indexOf(':');
-                    if (secondColon > 0) {
-                        try { port = Integer.parseInt(rest.substring(0, secondColon)); } catch (NumberFormatException ignored) { }
-                        database = rest.substring(secondColon + 1);
-                    } else {
-                        try { port = Integer.parseInt(rest); } catch (NumberFormatException ignored) { }
-                    }
-                } else {
-                    host = connect;
-                }
+        if (connect.startsWith("//")) {
+            String rest = connect.substring(2);
+            int slash = rest.indexOf('/');
+            if (slash <= 0) {
+                throw new IllegalArgumentException(
+                        "Invalid Oracle connection string: expected '@//host:port/service'");
             }
+            HostPort hp = parseAuthority(rest.substring(0, slash));
+            if (hp.port() == null) {
+                throw new IllegalArgumentException(
+                        "Invalid Oracle connection string: port is required");
+            }
+            host = hp.host();
+            port = hp.port();
+            database = rest.substring(slash);
+            if (database.length() <= 1) {
+                throw new IllegalArgumentException(
+                        "Invalid Oracle connection string: service name is required");
+            }
+            rejectForbiddenChars(database.substring(1), "service name");
+        } else {
+            String hostPart;
+            String afterHost;
+            if (connect.startsWith("[")) {
+                int close = connect.indexOf(']');
+                if (close < 0) {
+                    throw new IllegalArgumentException(
+                            "Invalid Oracle connection string: malformed IPv6 host");
+                }
+                hostPart = connect.substring(0, close + 1);
+                afterHost = connect.substring(close + 1);
+                if (!afterHost.startsWith(":")) {
+                    throw new IllegalArgumentException(
+                            "Invalid Oracle connection string: expected '@host:port:sid'");
+                }
+                afterHost = afterHost.substring(1);
+            } else {
+                int firstColon = connect.indexOf(':');
+                if (firstColon <= 0) {
+                    throw new IllegalArgumentException(
+                            "Invalid Oracle connection string: expected '@host:port:sid'");
+                }
+                hostPart = connect.substring(0, firstColon);
+                afterHost = connect.substring(firstColon + 1);
+            }
+            if (!isValidHost(hostPart)) {
+                throw new IllegalArgumentException(
+                        "Invalid Oracle connection string: invalid host");
+            }
+            int secondColon = afterHost.indexOf(':');
+            if (secondColon <= 0) {
+                throw new IllegalArgumentException(
+                        "Invalid Oracle connection string: expected '@host:port:sid'");
+            }
+            port = parsePort(afterHost.substring(0, secondColon));
+            database = afterHost.substring(secondColon + 1);
+            if (database.isEmpty()) {
+                throw new IllegalArgumentException(
+                        "Invalid Oracle connection string: SID is required");
+            }
+            host = hostPart;
         }
 
         return new ParsedConnection(DatabaseType.ORACLE, fullUrl, host, port, database,
@@ -222,7 +336,7 @@ public class ConnectionStringParser {
             if (semi > 0) {
                 database = rest.substring(0, semi);
                 String paramsStr = rest.substring(semi + 1);
-                parseSemicolonParams(paramsStr, params, k -> null);
+                parseSemicolonParams(paramsStr, params, k -> null, false);
             } else {
                 database = rest;
             }
@@ -242,7 +356,8 @@ public class ConnectionStringParser {
             java.net.URI uri = java.net.URI.create(value);
             scheme = uri.getScheme();
         } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("Invalid connection string: " + value, e);
+            throw new IllegalArgumentException(
+                    "Invalid connection string: malformed URI", e);
         }
 
         DatabaseType type = mapSchemeToType(scheme);
@@ -329,15 +444,6 @@ public class ConnectionStringParser {
     // Helpers
     // -------------------------------------------------------------------
 
-    /** Return the index of the first occurrence of either char in the string, or -1. */
-    private static int firstOf(String s, char a, char b) {
-        int ia = s.indexOf(a);
-        int ib = s.indexOf(b);
-        if (ia < 0) return ib;
-        if (ib < 0) return ia;
-        return Math.min(ia, ib);
-    }
-
     /** Decode a URL-encoded value, treating '+' as a literal (not a space). */
     private static String decode(String value) {
         return java.net.URLDecoder.decode(value.replace("+", "%2B"), StandardCharsets.UTF_8);
@@ -346,13 +452,13 @@ public class ConnectionStringParser {
     /** Parse ?key=value&key2=value2 into the supplied map. */
     private static void parseQueryParams(String query, Map<String, String> params) {
         for (String pair : query.split("&")) {
-            if (pair.isEmpty()) continue;
-            int eq = pair.indexOf('=');
-            if (eq > 0) {
-                params.put(pair.substring(0, eq), pair.substring(eq + 1));
-            } else {
-                params.put(pair, "");
+            if (pair.isEmpty()) {
+                continue;
             }
+            int eq = pair.indexOf('=');
+            String key = eq > 0 ? pair.substring(0, eq) : pair;
+            validateParameterKey(key);
+            params.put(key, eq > 0 ? pair.substring(eq + 1) : "");
         }
     }
 
@@ -360,9 +466,14 @@ public class ConnectionStringParser {
      * Parse ;key=value pairs from {@code rest} into {@code params}.
      * The {@code databaseExtractor} is called for each key to check whether
      * it represents the database name; if so, its value is returned.
+     *
+     * @param validateKeys when true, each key must be a plain parameter name
+     *                     (letters, digits, '.', '_', '-'); H2 keeps its
+     *                     historical permissive behaviour by passing false.
      */
     private ParsedResult parseSemicolonParams(String rest, Map<String, String> params,
-                                              java.util.function.Function<String, String> databaseExtractor) {
+                                              Function<String, String> databaseExtractor,
+                                              boolean validateKeys) {
         String extractedDatabase = null;
         for (String pair : rest.split(";")) {
             if (pair.isEmpty()) continue;
@@ -370,6 +481,9 @@ public class ConnectionStringParser {
             if (eq > 0) {
                 String key = pair.substring(0, eq);
                 String val = pair.substring(eq + 1);
+                if (validateKeys) {
+                    validateParameterKey(key);
+                }
                 params.put(key, val);
                 String db = databaseExtractor.apply(key);
                 if (db == null && "databaseName".equalsIgnoreCase(key)) {
@@ -382,33 +496,122 @@ public class ConnectionStringParser {
         return new ParsedResult(extractedDatabase);
     }
 
-    /**
-     * Parse a /path?query string, extracting the database name from the path
-     * and populating params from the query.
-     */
-    private ParsedResult parsePathQueryParams(String rest, Map<String, String> params) {
-        if (rest.isEmpty()) {
-            return ParsedResult.EMPTY;
+    /** Reject parameter keys that are not plain names (this also rejects '%'). */
+    private static void validateParameterKey(String key) {
+        if (key.isEmpty() || !PARAMETER_KEY_PATTERN.matcher(key).matches()) {
+            throw new IllegalArgumentException(
+                    "Invalid connection string: invalid URL parameter name");
         }
-
-        String database = null;
-        // rest starts with /
-        if (rest.charAt(0) == '/') {
-            String afterSlash = rest.substring(1);
-            int q = afterSlash.indexOf('?');
-            if (q >= 0) {
-                database = afterSlash.substring(0, q);
-                parseQueryParams(afterSlash.substring(q + 1), params);
-            } else {
-                database = afterSlash.isEmpty() ? null : afterSlash;
-            }
-        }
-
-        return new ParsedResult(database);
     }
 
     /**
-     * Parse a host:port string into host and port.
+     * Parse a strict {@code host[:port]} authority for the non-H2 JDBC forms.
+     * The host must be a hostname, an IPv4 literal or a bracketed IPv6 literal,
+     * and the port (when present) must be in the range 1-65535.
+     */
+    private static HostPort parseAuthority(String authority) {
+        rejectForbiddenChars(authority, "host");
+        if (authority.isEmpty()) {
+            throw new IllegalArgumentException("Invalid connection string: host is required");
+        }
+
+        if (authority.charAt(0) == '[') {
+            int close = authority.indexOf(']');
+            if (close < 0) {
+                throw new IllegalArgumentException(
+                        "Invalid connection string: malformed IPv6 host");
+            }
+            String host = authority.substring(0, close + 1);
+            String remainder = authority.substring(close + 1);
+            Integer port = null;
+            if (!remainder.isEmpty()) {
+                if (remainder.charAt(0) != ':') {
+                    throw new IllegalArgumentException(
+                            "Invalid connection string: malformed host");
+                }
+                port = parsePort(remainder.substring(1));
+            }
+            if (!isValidHost(host)) {
+                throw new IllegalArgumentException("Invalid connection string: invalid host");
+            }
+            return new HostPort(host, port);
+        }
+
+        int colon = authority.lastIndexOf(':');
+        if (colon >= 0) {
+            String host = authority.substring(0, colon);
+            if (host.indexOf(':') >= 0) {
+                // Unbracketed IPv6 literal; not an accepted simple form.
+                throw new IllegalArgumentException("Invalid connection string: invalid host");
+            }
+            Integer port = parsePort(authority.substring(colon + 1));
+            if (!isValidHost(host)) {
+                throw new IllegalArgumentException("Invalid connection string: invalid host");
+            }
+            return new HostPort(host, port);
+        }
+
+        if (!isValidHost(authority)) {
+            throw new IllegalArgumentException("Invalid connection string: invalid host");
+        }
+        return new HostPort(authority, null);
+    }
+
+    /** Parse and range-check a port. */
+    private static int parsePort(String value) {
+        if (value.isEmpty()) {
+            throw new IllegalArgumentException("Invalid connection string: port is required");
+        }
+        final int port;
+        try {
+            port = Integer.parseInt(value);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("Invalid connection string: invalid port");
+        }
+        if (port < 1 || port > 65535) {
+            throw new IllegalArgumentException("Invalid connection string: port out of range");
+        }
+        return port;
+    }
+
+    /** Returns true for a hostname, IPv4 literal or bracketed IPv6 literal. */
+    private static boolean isValidHost(String host) {
+        if (host == null || host.isEmpty()) {
+            return false;
+        }
+        if (host.charAt(0) == '[') {
+            if (!host.endsWith("]") || host.length() < 3) {
+                return false;
+            }
+            return isValidIpv6(host.substring(1, host.length() - 1));
+        }
+        return HOSTNAME_PATTERN.matcher(host).matches();
+    }
+
+    private static boolean isValidIpv6(String value) {
+        if (value.isEmpty() || value.indexOf(':') < 0
+                || !IPV6_LITERAL_PATTERN.matcher(value).matches()) {
+            return false;
+        }
+        try {
+            return java.net.InetAddress.getByName(value) instanceof java.net.Inet6Address;
+        } catch (java.net.UnknownHostException e) {
+            return false;
+        }
+    }
+
+    /** Reject characters that must never appear in an authority or service name. */
+    private static void rejectForbiddenChars(String value, String what) {
+        for (int i = 0; i < value.length(); i++) {
+            if (FORBIDDEN_AUTHORITY_CHARS.indexOf(value.charAt(i)) >= 0) {
+                throw new IllegalArgumentException(
+                        "Invalid connection string: invalid " + what);
+            }
+        }
+    }
+
+    /**
+     * Parse a host:port string into host and port (H2 historical behaviour).
      * Returns a HostPort with whatever could be parsed.
      */
     private static HostPort parseHostPort(String authority) {
@@ -436,18 +639,9 @@ public class ConnectionStringParser {
 
     /** Result of a parse step that may extract a database name. */
     private record ParsedResult(String database) {
-        static final ParsedResult EMPTY = new ParsedResult(null);
-
-        void ifMatch(java.util.function.Consumer<String> consumer) {
-            if (database != null) consumer.accept(database);
-        }
     }
 
     /** Simple pair of host and port. */
     private record HostPort(String host, Integer port) {
-        void ifMatch(java.util.function.Consumer<String> h, java.util.function.Consumer<Integer> p) {
-            if (host != null) h.accept(host);
-            if (port != null) p.accept(port);
-        }
     }
 }

@@ -278,6 +278,167 @@ class ConnectionStringParserTests {
     }
 
     // -----------------------------------------------------------------
+    // FX-001: strict parser — verified parameter-smuggling bypasses
+    // -----------------------------------------------------------------
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            // query hidden in the authority because there is no /database path
+            "jdbc:postgresql://db.example.com:5432?socketFactory=x",
+            // missing // authority separator
+            "jdbc:postgresql:app?socketFactory=x",
+            // MySQL address=(...) sub-protocol form
+            "jdbc:mysql://address=(host=h)(port=3306)(allowLoadLocalInfile=true)/app",
+            // MySQL (host=...,param=...) multi-host form
+            "jdbc:mysql://(host=h,autoDeserialize=true)/app",
+            // Oracle TNS descriptor
+            "jdbc:oracle:thin:@(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=169.254.169.254))(CONNECT_DATA=(SERVICE_NAME=orcl)))",
+            // Oracle query parameters are never parsed
+            "jdbc:oracle:thin:@//h:1521/svc?anything=x"
+    })
+    void rejectsVerifiedParameterSmugglingBypasses(String input) {
+        assertThatThrownBy(() -> parser.parse(input))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageNotContaining(input);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "jdbc:mysql:loadbalance://host:3306/db",
+            "jdbc:mysql:replication://host:3306/db",
+            "jdbc:mysql:srv://host:3306/db",
+            "jdbc:mariadb:loadbalance://host:3306/db",
+            "jdbc:mariadb:replication://host:3306/db"
+    })
+    void rejectsMySqlSubProtocols(String input) {
+        assertThatThrownBy(() -> parser.parse(input))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageNotContaining(input);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "jdbc:mysql://host1:3306,host2:3306/db",
+            "jdbc:mariadb://host1,host2/db",
+            "jdbc:postgresql://host1,host2/db"
+    })
+    void rejectsMultiHostLists(String input) {
+        assertThatThrownBy(() -> parser.parse(input))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageNotContaining(input);
+    }
+
+    @Test
+    void rejectsQueryParametersWithoutDatabasePath() {
+        assertThatThrownBy(() -> parser.parse("jdbc:postgresql://host:5432?ssl=true"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageNotContaining("ssl=true");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "jdbc:postgresql://bad_host:5432/db",
+            "jdbc:mysql://ho st:3306/db",
+            "jdbc:mysql://host(1):3306/db",
+            "jdbc:mariadb://host@evil/db",
+            "jdbc:sqlserver://ho st/db"
+    })
+    void rejectsInvalidHostCharacters(String input) {
+        assertThatThrownBy(() -> parser.parse(input))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageNotContaining(input);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "jdbc:postgresql://host:0/db",
+            "jdbc:postgresql://host:65536/db",
+            "jdbc:postgresql://host:-1/db",
+            "jdbc:postgresql://host:abc/db",
+            "jdbc:mysql://host:99999/db"
+    })
+    void rejectsInvalidPorts(String input) {
+        assertThatThrownBy(() -> parser.parse(input))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageNotContaining(input);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "jdbc:postgresql://host/db?ssl%66actory=x",
+            "jdbc:mysql://host/db?%61utoDeserialize=true",
+            "jdbc:sqlserver://host;data%62aseName=db",
+            "jdbc:mariadb://host/db?%zz=x"
+    })
+    void rejectsPercentEncodedParameterKeys(String input) {
+        assertThatThrownBy(() -> parser.parse(input))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageNotContaining(input);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "jdbc:oracle:thin:@MYDB",
+            "jdbc:oracle:thin:@//host/service",
+            "jdbc:oracle:thin:@host:1521",
+            "jdbc:oracle:thin:@host:abc:orcl",
+            "jdbc:oracle:thin:@host:1521:",
+            "jdbc:oracle:thin:@//host:1521/"
+    })
+    void rejectsInvalidOracleForms(String input) {
+        assertThatThrownBy(() -> parser.parse(input))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageNotContaining(input);
+    }
+
+    @Test
+    void rejectionMessageDoesNotLeakTheConnectionString() {
+        String url = "jdbc:postgresql://host:5432/db?%70assword=hunter2";
+        assertThatThrownBy(() -> parser.parse(url))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageNotContaining(url)
+                .hasMessageNotContaining("hunter2");
+    }
+
+    // -----------------------------------------------------------------
+    // FX-001: previously supported simple forms still parse
+    // -----------------------------------------------------------------
+
+    @Test
+    void parsesSqlServerInstanceName() {
+        ParsedConnection p = parser.parse(
+                "jdbc:sqlserver://sql-host\\SQLEXPRESS:1433;databaseName=reportdb");
+        assertThat(p.databaseType()).isEqualTo(DatabaseType.SQLSERVER);
+        assertThat(p.host()).isEqualTo("sql-host");
+        assertThat(p.port()).isEqualTo(1433);
+        assertThat(p.database()).isEqualTo("reportdb");
+    }
+
+    @Test
+    void parsesIpv4Host() {
+        ParsedConnection p = parser.parse("jdbc:postgresql://192.168.1.10:5432/appdb");
+        assertThat(p.host()).isEqualTo("192.168.1.10");
+        assertThat(p.port()).isEqualTo(5432);
+        assertThat(p.database()).isEqualTo("appdb");
+    }
+
+    @Test
+    void parsesBracketedIpv6Host() {
+        ParsedConnection p = parser.parse("jdbc:postgresql://[::1]:5432/appdb");
+        assertThat(p.host()).isEqualTo("[::1]");
+        assertThat(p.port()).isEqualTo(5432);
+        assertThat(p.database()).isEqualTo("appdb");
+    }
+
+    @Test
+    void parsesOracleSidWithIpv6Host() {
+        ParsedConnection p = parser.parse("jdbc:oracle:thin:@[::1]:1521:orcl");
+        assertThat(p.host()).isEqualTo("[::1]");
+        assertThat(p.port()).isEqualTo(1521);
+        assertThat(p.database()).isEqualTo("orcl");
+    }
+
+    // -----------------------------------------------------------------
     // DatabaseType enum
     // -----------------------------------------------------------------
 
