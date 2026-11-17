@@ -85,6 +85,8 @@ schema-to-entity:
   # Off by default. See the security note below.
   explicit-connections-enabled: false
   schema: public
+  # Include database views and materialized views alongside tables (default: true).
+  include-views: true
 ```
 
 Set `web-enabled: false` to use only the Java service.

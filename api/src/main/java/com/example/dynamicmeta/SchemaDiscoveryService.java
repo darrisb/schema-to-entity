@@ -196,14 +196,17 @@ public class SchemaDiscoveryService {
         }
 
         List<Map<String, Object>> tables = new ArrayList<>();
+        List<String> requestedTypes = requestedTableTypes(driverTableTypes(metadata),
+                properties.isIncludeViews());
         try (ResultSet rs = metadata.getTables(catalog, escapePattern(metadata, schema), "%",
-                new String[]{"TABLE"})) {
+                requestedTypes.toArray(String[]::new))) {
             while (rs.next()) {
                 String name = rs.getString("TABLE_NAME");
                 if (!filter.isEmpty() && !filter.contains(name.toLowerCase(Locale.ROOT))) {
                     continue;
                 }
-                tables.add(readTable(metadata, catalog, schema, name));
+                tables.add(readTable(metadata, catalog, schema, name,
+                        kindOf(safeGet(rs, "TABLE_TYPE"))));
             }
         }
         tables.sort(Comparator.comparing(table -> (String) table.get("name"), String.CASE_INSENSITIVE_ORDER));
@@ -219,12 +222,16 @@ public class SchemaDiscoveryService {
         return result;
     }
 
-    private Map<String, Object> readTable(DatabaseMetaData metadata, String catalog, String schema, String table)
-            throws SQLException {
+    private Map<String, Object> readTable(DatabaseMetaData metadata, String catalog, String schema,
+                                          String table, String kind) throws SQLException {
+        boolean tableObject = "table".equals(kind);
+
         Map<String, Integer> primaryKeys = new LinkedHashMap<>();
-        try (ResultSet rs = metadata.getPrimaryKeys(catalog, schema, table)) {
-            while (rs.next()) {
-                primaryKeys.put(rs.getString("COLUMN_NAME"), rs.getInt("KEY_SEQ"));
+        if (tableObject) {
+            try (ResultSet rs = metadata.getPrimaryKeys(catalog, schema, table)) {
+                while (rs.next()) {
+                    primaryKeys.put(rs.getString("COLUMN_NAME"), rs.getInt("KEY_SEQ"));
+                }
             }
         }
 
@@ -245,22 +252,25 @@ public class SchemaDiscoveryService {
         }
 
         List<Map<String, Object>> foreignKeys = new ArrayList<>();
-        try (ResultSet rs = metadata.getImportedKeys(catalog, schema, table)) {
-            while (rs.next()) {
-                Map<String, Object> foreignKey = new LinkedHashMap<>();
-                foreignKey.put("name", rs.getString("FK_NAME"));
-                foreignKey.put("column", rs.getString("FKCOLUMN_NAME"));
-                foreignKey.put("referencedTable", rs.getString("PKTABLE_NAME"));
-                foreignKey.put("referencedColumn", rs.getString("PKCOLUMN_NAME"));
-                foreignKeys.add(foreignKey);
+        if (tableObject) {
+            try (ResultSet rs = metadata.getImportedKeys(catalog, schema, table)) {
+                while (rs.next()) {
+                    Map<String, Object> foreignKey = new LinkedHashMap<>();
+                    foreignKey.put("name", rs.getString("FK_NAME"));
+                    foreignKey.put("column", rs.getString("FKCOLUMN_NAME"));
+                    foreignKey.put("referencedTable", rs.getString("PKTABLE_NAME"));
+                    foreignKey.put("referencedColumn", rs.getString("PKCOLUMN_NAME"));
+                    foreignKeys.add(foreignKey);
+                }
             }
         }
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("name", table);
+        result.put("kind", kind);
         result.put("columns", columns);
         result.put("foreignKeys", foreignKeys);
-        if (!primaryKeys.isEmpty()) {
+        if (tableObject && !primaryKeys.isEmpty()) {
             List<String> keys = primaryKeys.entrySet().stream()
                     .sorted(Map.Entry.comparingByValue())
                     .map(Map.Entry::getKey)
@@ -268,6 +278,74 @@ public class SchemaDiscoveryService {
             result.put("primaryKey", keys.size() == 1 ? keys.getFirst() : keys);
         }
         return result;
+    }
+
+    /**
+     * Returns the table types the driver reports through {@link DatabaseMetaData#getTableTypes()},
+     * normalized to upper case so driver spellings can be compared reliably.
+     */
+    private static Set<String> driverTableTypes(DatabaseMetaData metadata) throws SQLException {
+        Set<String> types = new LinkedHashSet<>();
+        try (ResultSet rs = metadata.getTableTypes()) {
+            while (rs.next()) {
+                String type = rs.getString("TABLE_TYPE");
+                if (type != null && !type.isBlank()) {
+                    types.add(type.trim().toUpperCase(Locale.ROOT));
+                }
+            }
+        }
+        return types;
+    }
+
+    /**
+     * Chooses the metadata table types to request: TABLE always, plus VIEW and MATERIALIZED VIEW
+     * when {@code includeViews} is set. Only types the driver reports are requested, so drivers
+     * that do not support a type are never asked for it.
+     */
+    private static List<String> requestedTableTypes(Set<String> driverTypes, boolean includeViews) {
+        List<String> requested = new ArrayList<>();
+        String tableType = firstMatchingType(driverTypes, "TABLE", "BASE TABLE");
+        if (tableType != null) {
+            requested.add(tableType);
+        }
+        if (includeViews) {
+            String viewType = firstMatchingType(driverTypes, "VIEW");
+            if (viewType != null) {
+                requested.add(viewType);
+            }
+            String materializedType = firstMatchingType(driverTypes, "MATERIALIZED VIEW", "MATERIALIZED_VIEW");
+            if (materializedType != null) {
+                requested.add(materializedType);
+            }
+        }
+        // An empty array means "all types" to JDBC, so always request at least TABLE.
+        if (requested.isEmpty()) {
+            requested.add("TABLE");
+        }
+        return requested;
+    }
+
+    private static String firstMatchingType(Set<String> driverTypes, String... candidates) {
+        for (String candidate : candidates) {
+            if (driverTypes.contains(candidate.toUpperCase(Locale.ROOT))) {
+                return candidate;
+            }
+        }
+        return null;
+    }
+
+    /** Maps a driver TABLE_TYPE value to the kind tag recorded for the object. */
+    private static String kindOf(String tableType) {
+        String normalized = tableType == null ? "" : tableType.trim().toUpperCase(Locale.ROOT)
+                .replace('_', ' ')
+                .replace('-', ' ');
+        if (normalized.contains("MATERIALIZED") && normalized.contains("VIEW")) {
+            return "materialized-view";
+        }
+        if (normalized.contains("VIEW")) {
+            return "view";
+        }
+        return "table";
     }
 
     private static String displayType(ResultSet rs) throws SQLException {

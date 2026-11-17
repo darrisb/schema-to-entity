@@ -19,6 +19,8 @@ public class SchemaToEntityProperties {
     private String schema;
     private List<String> allowedHosts = List.of();
     private boolean allowEmbeddedDatabases = false;
+    /** Include database views and materialized views alongside tables. */
+    private boolean includeViews = true;
     private Duration connectTimeout = Duration.ofSeconds(10);
     private Duration socketTimeout = Duration.ofSeconds(60);
     private int maxConcurrentExplicitConnections = 4;
@@ -69,6 +71,14 @@ public class SchemaToEntityProperties {
 
     public void setAllowEmbeddedDatabases(boolean allowEmbeddedDatabases) {
         this.allowEmbeddedDatabases = allowEmbeddedDatabases;
+    }
+
+    public boolean isIncludeViews() {
+        return includeViews;
+    }
+
+    public void setIncludeViews(boolean includeViews) {
+        this.includeViews = includeViews;
     }
 
     public Duration getConnectTimeout() {

@@ -122,6 +122,24 @@ class SpringMetadataTransformerTests {
     }
 
     @Test
+    void transformsADiscoveredViewUsingTheSyntheticPrimaryKeyHandling() {
+        Map<String, Object> schema = Map.of("dialect", "h2", "tables", List.of(
+                Map.of("name", "customer_names", "kind", "view",
+                        "columns", List.of(
+                                Map.of("name", "id", "type", "int8", "nullable", false, "primaryKey", false),
+                                Map.of("name", "name", "type", "varchar(80)", "nullable", false, "primaryKey", false)),
+                        "foreignKeys", List.of())));
+
+        Map<String, Object> entity = entity(transformer.transform(schema, "Dynamic"), "DynamicCustomerName");
+
+        assertThat(entity.get("tableName")).isEqualTo("customer_names");
+        assertThat(entity.get("primaryKey")).isEqualTo(Map.of("synthetic", true));
+        assertThat(properties(entity)).extracting(property -> property.get("columnName"))
+                .containsExactly("id", "name");
+        assertThat(relationships(entity)).isEmpty();
+    }
+
+    @Test
     void producesAnEmptyEntityListForASchemaWithoutTables() {
         assertThat(entities(transformer.transform(Map.of("dialect", "postgresql"), "Dynamic"))).isEmpty();
     }
