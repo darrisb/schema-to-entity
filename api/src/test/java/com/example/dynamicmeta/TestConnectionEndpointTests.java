@@ -48,8 +48,10 @@ class TestConnectionEndpointTests {
 
         assertThat(result.get("databaseType")).isEqualTo("h2");
         assertThat((String) result.get("productName")).containsIgnoringCase("h2");
-        // The factory requests a read-only session, but H2's isReadOnly()
-        // reports the database state and stays read-write for in-memory DBs.
+        // The factory requests a read-only session, but H2's
+        // Connection.setReadOnly is a no-op and isReadOnly() executes
+        // CALL READONLY(), reporting the database's actual read-only state.
+        // An in-memory H2 database is read-write, so the value is false.
         assertThat((Boolean) result.get("readOnly")).isFalse();
         assertThat(((Number) result.get("latencyMs")).longValue()).isGreaterThanOrEqualTo(0L);
 
