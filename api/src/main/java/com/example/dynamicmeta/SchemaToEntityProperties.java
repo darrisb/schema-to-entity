@@ -16,6 +16,7 @@ public class SchemaToEntityProperties {
     private boolean allowEmbeddedDatabases = false;
     private Duration connectTimeout = Duration.ofSeconds(10);
     private Duration socketTimeout = Duration.ofSeconds(60);
+    private int maxConcurrentExplicitConnections = 4;
 
     public boolean isEnabled() {
         return enabled;
@@ -79,5 +80,13 @@ public class SchemaToEntityProperties {
 
     public void setSocketTimeout(Duration socketTimeout) {
         this.socketTimeout = socketTimeout;
+    }
+
+    public int getMaxConcurrentExplicitConnections() {
+        return maxConcurrentExplicitConnections;
+    }
+
+    public void setMaxConcurrentExplicitConnections(int maxConcurrentExplicitConnections) {
+        this.maxConcurrentExplicitConnections = maxConcurrentExplicitConnections;
     }
 }

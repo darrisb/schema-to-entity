@@ -1,5 +1,6 @@
 package com.example.dynamicmeta;
 
+import com.example.dynamicmeta.connection.ConnectionBusyException;
 import com.example.dynamicmeta.connection.ConnectionPolicy;
 import com.example.dynamicmeta.connection.ConnectionRejectedException;
 import com.example.dynamicmeta.connection.ConnectionStringParser;
@@ -28,17 +29,23 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
 
 /** Discovers tables through standard JDBC metadata. */
 public class SchemaDiscoveryService {
 
     private static final String SAMPLE_RESOURCE = "/sample-schema.json";
     private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final String TOO_MANY_CONNECTIONS_MSG =
+            "Too many concurrent schema extractions; try again shortly";
+    private static final long PERMIT_WAIT_SECONDS = 2L;
 
     private final DataSource dataSource;
     private final SchemaToEntityProperties properties;
     private final ConnectionPolicy policy;
     private final JdbcConnectionFactory jdbcConnectionFactory;
+    private final Semaphore explicitConnectionSemaphore;
 
     /** Constructor for existing tests that do not require explicit connections. */
     public SchemaDiscoveryService(DataSource dataSource,
@@ -55,6 +62,8 @@ public class SchemaDiscoveryService {
         this.properties = properties;
         this.policy = policy;
         this.jdbcConnectionFactory = jdbcConnectionFactory;
+        int max = Math.max(properties.getMaxConcurrentExplicitConnections(), 1);
+        this.explicitConnectionSemaphore = new Semaphore(max, true);
     }
 
     /** Returns a fixed schema so the API can be demonstrated without a database. */
@@ -86,6 +95,24 @@ public class SchemaDiscoveryService {
         if (!properties.isExplicitConnectionsEnabled()) {
             throw new ConnectionRejectedException("Explicit database connections are disabled");
         }
+        boolean acquired;
+        try {
+            acquired = explicitConnectionSemaphore.tryAcquire(PERMIT_WAIT_SECONDS, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new ConnectionBusyException(TOO_MANY_CONNECTIONS_MSG);
+        }
+        if (!acquired) {
+            throw new ConnectionBusyException(TOO_MANY_CONNECTIONS_MSG);
+        }
+        try {
+            return doDiscover(request);
+        } finally {
+            explicitConnectionSemaphore.release();
+        }
+    }
+
+    private Map<String, Object> doDiscover(ConnectionRequest request) throws SQLException {
         ParsedConnection parsed = new ConnectionStringParser().parse(request.connectionString());
         policy.validate(parsed);
         String expectedDriver = parsed.databaseType().getDriverClassName();
