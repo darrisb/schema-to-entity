@@ -14,23 +14,25 @@ import java.util.Set;
  * <ul>
  *   <li>Host allowlist (exact or *.wildcard match)</li>
  *   <li>Rejection of link-local and cloud metadata addresses</li>
- *   <li>Embedded/database file access control</li>
+ *   <li>Embedded/database file access control (all H2 URLs)</li>
  *   <li>JDBC URL parameter allowlist per database type</li>
  * </ul>
  */
 public class ConnectionPolicy {
 
+    // Caller-supplied timeout parameters are deliberately absent: timeouts
+    // come only from the server configuration so a caller cannot override or
+    // disable them (e.g. socketTimeout=0 would mean "wait forever").
     private static final Set<String> ALLOWED_POSTGRESQL_PARAMS = Set.of(
-            "ssl", "sslmode", "connecttimeout", "sockettimeout",
-            "applicationname", "currentschema");
+            "ssl", "sslmode", "applicationname", "currentschema");
 
     private static final Set<String> ALLOWED_MYSQL_PARAMS = Set.of(
-            "usessl", "sslmode", "requiressl", "connecttimeout",
-            "sockettimeout", "servertimezone", "characterencoding");
+            "usessl", "sslmode", "requiressl",
+            "servertimezone", "characterencoding");
 
     private static final Set<String> ALLOWED_SQLSERVER_PARAMS = Set.of(
             "encrypt", "trustservercertificate", "databasename",
-            "instancename", "logintimeout", "applicationname");
+            "instancename", "applicationname");
 
     private static final Set<String> ALLOWED_ORACLE_PARAMS = Set.of();
 
@@ -112,14 +114,19 @@ public class ConnectionPolicy {
 
     /** Returns true when {@code host} matches an entry in {@link #allowedHosts}. */
     private boolean matchesAllowlist(String host) {
+        String lowerHost = host.toLowerCase(Locale.ROOT);
         for (String pattern : allowedHosts) {
-            if (host.equalsIgnoreCase(pattern)) {
+            String lowerPattern = pattern.toLowerCase(Locale.ROOT);
+            if (lowerHost.equals(lowerPattern)) {
                 return true;
             }
-            if (pattern.startsWith("*.")) {
-                String suffix = pattern.substring(1); // ".example.com"
-                if (host.toLowerCase(Locale.ROOT).endsWith(suffix)
-                        && host.length() > pattern.length()) {
+            if (lowerPattern.startsWith("*.")) {
+                // Suffix includes the leading dot, so "example.com" and
+                // "badexample.com" cannot match "*.example.com"; the length
+                // check requires at least one character before the suffix.
+                String suffix = lowerPattern.substring(1); // ".example.com"
+                if (lowerHost.endsWith(suffix)
+                        && lowerHost.length() > suffix.length()) {
                     return true;
                 }
             }
@@ -160,12 +167,23 @@ public class ConnectionPolicy {
         }
     }
 
-    /** Returns true for 169.254.0.0/16. */
+    /**
+     * Returns true for 169.254.0.0/16 (IPv4 link-local) and fe80::/10
+     * (IPv6 link-local).
+     */
     private static boolean isLinkLocal(InetAddress addr) {
         byte[] bytes = addr.getAddress();
-        return bytes.length == 4
-                && bytes[0] == (byte) 169
-                && bytes[1] == (byte) 254;
+        if (bytes.length == 4) {
+            return bytes[0] == (byte) 169
+                    && bytes[1] == (byte) 254;
+        }
+        if (bytes.length == 16) {
+            // fe80::/10: first byte 0xfe and the first two bits of the
+            // second byte are 10 (0x80-0xbf).
+            return bytes[0] == (byte) 0xfe
+                    && (bytes[1] & 0xc0) == 0x80;
+        }
+        return false;
     }
 
     // -------------------------------------------------------------------
@@ -173,9 +191,11 @@ public class ConnectionPolicy {
     // -------------------------------------------------------------------
 
     private boolean isEmbedded(ParsedConnection parsed) {
+        // Every H2 URL is embedded/file-based or an H2 server connection
+        // (mem:, file:, tcp://, ssl://, ...); none may be used unless
+        // explicitly allowed.
         if (parsed.databaseType() == DatabaseType.H2) {
-            // H2 without a host is mem: or file:
-            return parsed.host() == null;
+            return true;
         }
         // Other embedded databases would have no host either
         if (parsed.host() == null) {

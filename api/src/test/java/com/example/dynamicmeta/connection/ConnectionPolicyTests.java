@@ -47,8 +47,6 @@ class ConnectionPolicyTests {
         Map<String, String> params = new LinkedHashMap<>();
         params.put("ssl", "true");
         params.put("sslmode", "require");
-        params.put("connectTimeout", "10");
-        params.put("socketTimeout", "30");
         params.put("ApplicationName", "myapp");
         params.put("currentSchema", "public");
         ParsedConnection withParams = new ParsedConnection(
@@ -64,8 +62,6 @@ class ConnectionPolicyTests {
         params.put("useSSL", "false");
         params.put("sslMode", "REQUIRED");
         params.put("requireSSL", "true");
-        params.put("connectTimeout", "5000");
-        params.put("socketTimeout", "10000");
         params.put("serverTimezone", "UTC");
         params.put("characterEncoding", "utf8");
         ParsedConnection pc = new ParsedConnection(DatabaseType.MYSQL,
@@ -80,7 +76,6 @@ class ConnectionPolicyTests {
         params.put("encrypt", "true");
         params.put("trustServerCertificate", "true");
         params.put("databaseName", "reportdb");
-        params.put("loginTimeout", "30");
         params.put("applicationName", "myapp");
         ParsedConnection pc = new ParsedConnection(DatabaseType.SQLSERVER,
                 "jdbc:sqlserver://host;databaseName=reportdb", "host", 1433, "reportdb",
@@ -213,6 +208,84 @@ class ConnectionPolicyTests {
     }
 
     @Test
+    void wildcardMatchesSingleLabelPrefix() {
+        // Regression: the old length check rejected a.example.com because its
+        // length equals the pattern length.
+        ParsedConnection pc = ParsedConnection.of(DatabaseType.POSTGRESQL,
+                "jdbc:postgresql://a.example.com/db", "a.example.com", 5432, "db");
+        ConnectionPolicy policy = new ConnectionPolicy(List.of("*.example.com"), false);
+        assertThatCode(() -> policy.validate(pc)).doesNotThrowAnyException();
+    }
+
+    @Test
+    void wildcardMatchIsCaseInsensitive() {
+        ParsedConnection pc = ParsedConnection.of(DatabaseType.POSTGRESQL,
+                "jdbc:postgresql://DB.Example.COM/db", "DB.Example.COM", 5432, "db");
+        ConnectionPolicy policy = new ConnectionPolicy(List.of("*.example.com"), false);
+        assertThatCode(() -> policy.validate(pc)).doesNotThrowAnyException();
+    }
+
+    @Test
+    void wildcardDoesNotMatchLookalikeDomain() {
+        ParsedConnection pc = ParsedConnection.of(DatabaseType.POSTGRESQL,
+                "jdbc:postgresql://badexample.com/db", "badexample.com", 5432, "db");
+        ConnectionPolicy policy = new ConnectionPolicy(List.of("*.example.com"), false);
+        assertThatThrownBy(() -> policy.validate(pc))
+                .isInstanceOf(ConnectionRejectedException.class)
+                .hasMessageContaining("badexample.com");
+    }
+
+    // -------------------------------------------------------------------
+    // Caller-supplied timeout parameters are never allowed
+    // -------------------------------------------------------------------
+
+    @Test
+    void rejectsCallerSuppliedTimeoutParameters() {
+        ConnectionStringParser parser = new ConnectionStringParser();
+
+        ParsedConnection postgres = parser.parse(
+                "jdbc:postgresql://host:5432/db?socketTimeout=0");
+        ConnectionRejectedException postgresEx =
+                assertRejects(() -> DEFAULT.validate(postgres));
+        assertThat(postgresEx.getMessage())
+                .contains("socketTimeout").doesNotContain("=0");
+
+        ParsedConnection mysql = parser.parse(
+                "jdbc:mysql://host:3306/db?socketTimeout=0");
+        ConnectionRejectedException mysqlEx =
+                assertRejects(() -> DEFAULT.validate(mysql));
+        assertThat(mysqlEx.getMessage())
+                .contains("socketTimeout").doesNotContain("=0");
+
+        ParsedConnection sqlServer = parser.parse(
+                "jdbc:sqlserver://host:1433;loginTimeout=0");
+        ConnectionRejectedException sqlServerEx =
+                assertRejects(() -> DEFAULT.validate(sqlServer));
+        assertThat(sqlServerEx.getMessage())
+                .contains("loginTimeout").doesNotContain("=0");
+    }
+
+    @Test
+    void rejectsAllCallerSuppliedTimeoutParameterNames() {
+        // Timeouts come only from server properties; any caller value,
+        // including a non-zero one, is rejected.
+        ParsedConnection postgres = withParam(DatabaseType.POSTGRESQL, "connectTimeout", "5");
+        assertThatThrownBy(() -> DEFAULT.validate(postgres))
+                .isInstanceOf(ConnectionRejectedException.class)
+                .hasMessageContaining("connectTimeout");
+
+        ParsedConnection mysql = withParam(DatabaseType.MYSQL, "connectTimeout", "5000");
+        assertThatThrownBy(() -> DEFAULT.validate(mysql))
+                .isInstanceOf(ConnectionRejectedException.class)
+                .hasMessageContaining("connectTimeout");
+
+        ParsedConnection sqlServer = withParam(DatabaseType.SQLSERVER, "loginTimeout", "30");
+        assertThatThrownBy(() -> DEFAULT.validate(sqlServer))
+                .isInstanceOf(ConnectionRejectedException.class)
+                .hasMessageContaining("loginTimeout");
+    }
+
+    @Test
     void emptyAllowlistPermitsAnyHost() {
         ParsedConnection pc = ParsedConnection.of(DatabaseType.POSTGRESQL, "jdbc:postgresql://anyhost/db",
                 "anyhost", 5432, "db");
@@ -240,7 +313,9 @@ class ConnectionPolicyTests {
             "169.254.0.0",
             "169.254.255.255",
             "metadata.google.internal",
-            "fd00:ec2::254"
+            "fd00:ec2::254",
+            "fe80::1",
+            "[fe80::1]"
     })
     void metadataAndLinkLocalRejectedWithEmptyAllowlist(String host) {
         ParsedConnection pc = ParsedConnection.of(DatabaseType.POSTGRESQL, "jdbc:postgresql://host/db",
@@ -292,11 +367,41 @@ class ConnectionPolicyTests {
     }
 
     @Test
-    void h2TcpWithHostIsNotTreatedAsEmbedded() {
+    void h2TcpRejectedByDefault() {
         ParsedConnection pc = ParsedConnection.of(DatabaseType.H2,
                 "jdbc:h2:tcp://h2server:9092/~/testdb",
                 "h2server", 9092, "/~/testdb");
-        // Has a host, so it's not considered embedded
-        assertThatCode(() -> DEFAULT.validate(pc)).doesNotThrowAnyException();
+        assertThatThrownBy(() -> DEFAULT.validate(pc))
+                .isInstanceOf(ConnectionRejectedException.class)
+                .hasMessageContaining("Embedded");
+    }
+
+    @Test
+    void h2TcpAcceptedWhenEmbeddedAllowed() {
+        ParsedConnection pc = ParsedConnection.of(DatabaseType.H2,
+                "jdbc:h2:tcp://h2server:9092/~/testdb",
+                "h2server", 9092, "/~/testdb");
+        assertThatCode(() -> EMBEDDED_OK.validate(pc)).doesNotThrowAnyException();
+    }
+
+    @Test
+    void h2SslRejectedByDefault() {
+        ParsedConnection pc = ParsedConnection.of(DatabaseType.H2,
+                "jdbc:h2:ssl://h2server:9092/~/testdb",
+                "h2server", 9092, "/~/testdb");
+        assertThatThrownBy(() -> DEFAULT.validate(pc))
+                .isInstanceOf(ConnectionRejectedException.class)
+                .hasMessageContaining("Embedded");
+    }
+
+    @Test
+    void h2TcpSemicolonParametersArePolicyChecked() {
+        // Even when embedded databases are allowed, H2 tcp settings such as
+        // INIT=RUNSCRIPT must pass the H2 parameter allowlist.
+        ParsedConnection pc = new ConnectionStringParser().parse(
+                "jdbc:h2:tcp://h2server:9092/~/testdb;INIT=RUNSCRIPT FROM 'file:/etc/passwd'");
+        assertThat(pc.parameters()).containsKey("INIT");
+        ConnectionRejectedException ex = assertRejects(() -> EMBEDDED_OK.validate(pc));
+        assertThat(ex.getMessage()).contains("INIT").doesNotContain("passwd");
     }
 }

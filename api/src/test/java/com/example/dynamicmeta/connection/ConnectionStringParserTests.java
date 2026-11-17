@@ -159,6 +159,25 @@ class ConnectionStringParserTests {
         assertThat(p.database()).isEqualTo("/~/testdb");
     }
 
+    @Test
+    void parsesH2Ssl() {
+        ParsedConnection p = parser.parse("jdbc:h2:ssl://remotehost:9092/~/testdb");
+        assertThat(p.databaseType()).isEqualTo(DatabaseType.H2);
+        assertThat(p.host()).isEqualTo("remotehost");
+        assertThat(p.port()).isEqualTo(9092);
+        assertThat(p.database()).isEqualTo("/~/testdb");
+        assertThat(p.jdbcUrl()).isEqualTo("jdbc:h2:ssl://remotehost:9092/~/testdb");
+    }
+
+    @Test
+    void parsesH2TcpParametersIntoTheParameterMap() {
+        ParsedConnection p = parser.parse(
+                "jdbc:h2:tcp://remotehost:9092/~/testdb;INIT=RUNSCRIPT FROM 'file:/tmp/x'");
+        assertThat(p.database()).isEqualTo("/~/testdb");
+        assertThat(p.parameters()).containsKey("INIT");
+        assertThat(p.jdbcUrl()).contains(";INIT=RUNSCRIPT");
+    }
+
     // -----------------------------------------------------------------
     // URI forms
     // -----------------------------------------------------------------

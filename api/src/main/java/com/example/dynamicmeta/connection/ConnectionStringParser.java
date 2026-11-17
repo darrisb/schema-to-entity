@@ -334,7 +334,7 @@ public class ConnectionStringParser {
                 null, null, new LinkedHashMap<>());
     }
 
-    /** h2: mem:db;params, file:path;params, tcp://host:port/path */
+    /** h2: mem:db;params, file:path;params, tcp://host:port/path, ssl://... */
     private ParsedConnection parseJdbcH2(String fullUrl) {
         String after = fullUrl.substring("jdbc:h2:".length());
 
@@ -343,10 +343,18 @@ public class ConnectionStringParser {
         String database = null;
         Map<String, String> params = new LinkedHashMap<>();
 
-        if (after.startsWith("tcp://") || after.startsWith("http://") || after.startsWith("https://")) {
-            String uri = after.substring(4); // after "tcp:" / "http" etc.
+        if (isH2RemoteForm(after)) {
+            String uri = after.substring(after.indexOf(':') + 3);
             if (uri.startsWith("//")) {
                 uri = uri.substring(2);
+            }
+            // H2 settings after the database path are semicolon-separated and
+            // must reach the parameter allowlist (e.g. tcp://host/db;INIT=...).
+            int semi = uri.indexOf(';');
+            String settings = null;
+            if (semi >= 0) {
+                settings = uri.substring(semi + 1);
+                uri = uri.substring(0, semi);
             }
             int slash = uri.indexOf('/');
             if (slash > 0) {
@@ -358,6 +366,9 @@ public class ConnectionStringParser {
                 HostPort hp = parseHostPort(uri);
                 host = hp.host();
                 port = hp.port();
+            }
+            if (settings != null) {
+                parseSemicolonParams(settings, params, k -> null, false);
             }
         } else {
             // mem:db;params  or  file:path;params
@@ -380,17 +391,22 @@ public class ConnectionStringParser {
                 credentials.username(), credentials.password(), params);
     }
 
+    /** Returns true for H2 remote sub-protocols: tcp://, ssl://, http://, https://. */
+    private static boolean isH2RemoteForm(String after) {
+        return after.startsWith("tcp://") || after.startsWith("ssl://")
+                || after.startsWith("http://") || after.startsWith("https://");
+    }
+
     /**
      * Build the canonical H2 URL, preserving the original sub-protocol
-     * ({@code mem:}, {@code file:}, {@code tcp://}, {@code http://},
-     * {@code https://}) because it is not derivable from the parsed
-     * host/database components.
+     * ({@code mem:}, {@code file:}, {@code tcp://}, {@code ssl://},
+     * {@code http://}, {@code https://}) because it is not derivable from the
+     * parsed host/database components.
      */
     private static String buildH2JdbcUrl(String after, String host, Integer port,
                                          String database, Map<String, String> params) {
         StringBuilder sb = new StringBuilder("jdbc:h2:");
-        if (after.startsWith("tcp://") || after.startsWith("http://")
-                || after.startsWith("https://")) {
+        if (isH2RemoteForm(after)) {
             sb.append(after, 0, after.indexOf(':') + 3);
             if (host != null) sb.append(host);
             if (port != null) sb.append(':').append(port);
