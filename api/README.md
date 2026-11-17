@@ -115,11 +115,13 @@ For security, only an allowlisted set of URL parameters may appear in a connecti
 
 | Database | Allowed parameters |
 |---|---|
-| PostgreSQL | `ssl`, `sslmode`, `connecttimeout`, `sockettimeout`, `applicationname`, `currentschema` |
-| MySQL / MariaDB | `usessl`, `sslmode`, `requiressl`, `connecttimeout`, `sockettimeout`, `servertimezone`, `characterencoding` |
-| SQL Server | `encrypt`, `trustservercertificate`, `databasename`, `instancename`, `logintimeout`, `applicationname` |
+| PostgreSQL | `ssl`, `sslmode`, `applicationname`, `currentschema` |
+| MySQL / MariaDB | `usessl`, `sslmode`, `requiressl`, `servertimezone`, `characterencoding` |
+| SQL Server | `encrypt`, `trustservercertificate`, `databasename`, `instancename`, `applicationname` |
 | Oracle | *(none – TNS aliases are the recommended way to configure connections)* |
 | H2 | `db_close_delay`, `db_close_on_exit`, `file_lock`, `cache_size`, `max_row_fetch`, `query_timeout`, `access_mode_data`, `compress`, `ifexists` |
+
+Timeout parameters (`connecttimeout`, `sockettimeout`, `logintimeout`) are never allowed in the connection string. Connection and socket timeouts come only from the server settings `schema-to-entity.connect-timeout` and `schema-to-entity.socket-timeout`.
 
 ### Host allowlist (`allowed-hosts`)
 
@@ -129,7 +131,7 @@ Embedded databases (no host) are rejected when `allowed-hosts` is non-empty, bec
 
 ### Embedded database rule
 
-H2 `mem:` / `file:` and other file-based databases are **rejected by default**. Set `allow-embedded-databases: true` to permit them.
+All `jdbc:h2:` URLs, including `mem:`, `file:`, `tcp://` and `ssl://`, are **rejected by default**. Set `allow-embedded-databases: true` to permit them.
 
 ### Timeouts
 
