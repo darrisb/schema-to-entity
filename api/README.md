@@ -107,6 +107,8 @@ The parser accepts both **JDBC URL** and **URI** forms. Credentials can be embed
 
 Oracle does not accept a URI scheme because its JDBC URL format is not URI-compatible.
 
+`user` and `password` may also be supplied as URL parameters (any case), for example `jdbc:postgresql://host/db?user=u&password=p`. They are removed from the URL and passed to the driver as connection properties, so the rebuilt JDBC URL never contains credentials.
+
 ### URL parameter allowlist
 
 For security, only an allowlisted set of URL parameters may appear in a connection string. Any parameter not on the list causes the connection to be rejected with HTTP 403.
@@ -115,7 +117,7 @@ For security, only an allowlisted set of URL parameters may appear in a connecti
 |---|---|
 | PostgreSQL | `ssl`, `sslmode`, `connecttimeout`, `sockettimeout`, `applicationname`, `currentschema` |
 | MySQL / MariaDB | `usessl`, `sslmode`, `requiressl`, `connecttimeout`, `sockettimeout`, `servertimezone`, `characterencoding` |
-| SQL Server | `encrypt`, `trustservercertificate`, `databasename`, `logintimeout`, `applicationname` |
+| SQL Server | `encrypt`, `trustservercertificate`, `databasename`, `instancename`, `logintimeout`, `applicationname` |
 | Oracle | *(none – TNS aliases are the recommended way to configure connections)* |
 | H2 | `db_close_delay`, `db_close_on_exit`, `file_lock`, `cache_size`, `max_row_fetch`, `query_timeout`, `access_mode_data`, `compress`, `ifexists` |
 

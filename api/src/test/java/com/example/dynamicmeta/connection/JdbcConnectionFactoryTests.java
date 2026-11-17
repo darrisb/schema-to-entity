@@ -182,6 +182,28 @@ class JdbcConnectionFactoryTests {
         assertThat(props.getProperty("password")).isEqualTo("urlPass");
     }
 
+    @Test
+    void credentialsFromUrlParametersReachProperties() {
+        ParsedConnection parsed = new ConnectionStringParser().parse(
+                "jdbc:postgresql://localhost:5432/testdb?user=urlUser&password=urlPass");
+
+        Properties props = factory.buildProperties(parsed, null, null, null);
+
+        assertThat(props.getProperty("user")).isEqualTo("urlUser");
+        assertThat(props.getProperty("password")).isEqualTo("urlPass");
+    }
+
+    @Test
+    void requestCredentialsStillOverrideUrlParameterCredentials() {
+        ParsedConnection parsed = new ConnectionStringParser().parse(
+                "jdbc:postgresql://localhost:5432/testdb?user=urlUser&password=urlPass");
+
+        Properties props = factory.buildProperties(parsed, "reqUser", "reqPass", null);
+
+        assertThat(props.getProperty("user")).isEqualTo("reqUser");
+        assertThat(props.getProperty("password")).isEqualTo("reqPass");
+    }
+
     // -------------------------------------------------------------------
     // Read-only connection (H2 embedded)
     // -------------------------------------------------------------------

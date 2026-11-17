@@ -1,6 +1,8 @@
 package com.example.dynamicmeta.connection;
 
+import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.function.Function;
@@ -8,8 +10,11 @@ import java.util.regex.Pattern;
 
 /**
  * Parses a connection string (JDBC URL or URI form) into a normalised
- * {@link ParsedConnection} containing the database type, JDBC URL, host,
- * port, database name, credentials (from URI forms only) and parameters.
+ * {@link ParsedConnection} containing the database type, canonical JDBC URL,
+ * host, port, database name, credentials and parameters. Credentials may come
+ * from the URI userinfo or from {@code user}/{@code password} URL parameters;
+ * they are always passed to the driver as properties, never embedded in the
+ * rebuilt JDBC URL.
  * <p>
  * JDBC URLs are parsed strictly: only the documented simple forms are
  * accepted and anything that could hide connection parameters from
@@ -113,9 +118,12 @@ public class ConnectionStringParser {
 
         Map<String, String> params = new LinkedHashMap<>();
         String database = parseGenericPathAndQuery(rest, params);
+        Credentials credentials = extractCredentials(params);
+        String jdbcUrl = ParsedConnection.canonicalJdbcUrl(
+                type, hp.host(), hp.port(), database, params);
 
-        return new ParsedConnection(type, fullUrl, hp.host(), hp.port(), database,
-                null, null, params);
+        return new ParsedConnection(type, jdbcUrl, hp.host(), hp.port(), database,
+                credentials.username(), credentials.password(), params);
     }
 
     /**
@@ -157,6 +165,7 @@ public class ConnectionStringParser {
 
         String host;
         Integer port;
+        String instance = null;
         if (authority.startsWith("[")) {
             int close = authority.indexOf(']');
             if (close < 0) {
@@ -164,12 +173,20 @@ public class ConnectionStringParser {
                         "Invalid connection string: malformed IPv6 host");
             }
             host = authority.substring(0, close + 1);
-            port = parseSqlServerRemainder(authority.substring(close + 1));
+            String remainder = authority.substring(close + 1);
+            if (remainder.startsWith("\\")) {
+                remainder = remainder.substring(1);
+            }
+            InstancePort ip = parseSqlServerRemainder(remainder);
+            instance = ip.instance();
+            port = ip.port();
         } else {
             int backslash = authority.indexOf('\\');
             if (backslash >= 0) {
                 host = authority.substring(0, backslash);
-                port = parseSqlServerRemainder(authority.substring(backslash + 1));
+                InstancePort ip = parseSqlServerRemainder(authority.substring(backslash + 1));
+                instance = ip.instance();
+                port = ip.port();
             } else {
                 HostPort hp = parseAuthority(authority);
                 host = hp.host();
@@ -186,21 +203,32 @@ public class ConnectionStringParser {
             ParsedResult pr = parseSemicolonParams(rest.substring(1), params, k -> null, true);
             if (pr.database() != null) database = pr.database();
         }
+        // Preserve a named instance as a regular, allowlisted parameter so the
+        // canonical URL still targets the same instance.
+        if (instance != null && !containsKeyIgnoreCase(params, "instanceName")) {
+            Map<String, String> withInstance = new LinkedHashMap<>();
+            withInstance.put("instanceName", instance);
+            withInstance.putAll(params);
+            params = withInstance;
+        }
+        Credentials credentials = extractCredentials(params);
+        String jdbcUrl = ParsedConnection.canonicalJdbcUrl(
+                DatabaseType.SQLSERVER, host, port, database, params);
 
-        return new ParsedConnection(DatabaseType.SQLSERVER, fullUrl, host, port, database,
-                null, null, params);
+        return new ParsedConnection(DatabaseType.SQLSERVER, jdbcUrl, host, port, database,
+                credentials.username(), credentials.password(), params);
     }
 
     /**
      * Parse the part after an SQL Server host or IPv6 literal:
      * empty, {@code :port}, {@code \instance} or {@code \instance:port}.
      */
-    private static Integer parseSqlServerRemainder(String remainder) {
+    private static InstancePort parseSqlServerRemainder(String remainder) {
         if (remainder.isEmpty()) {
-            return null;
+            return new InstancePort(null, null);
         }
         if (remainder.charAt(0) == ':') {
-            return parsePort(remainder.substring(1));
+            return new InstancePort(null, parsePort(remainder.substring(1)));
         }
         int colon = remainder.indexOf(':');
         String instance = colon >= 0 ? remainder.substring(0, colon) : remainder;
@@ -208,7 +236,8 @@ public class ConnectionStringParser {
             throw new IllegalArgumentException(
                     "Invalid connection string: invalid instance name");
         }
-        return colon < 0 ? null : parsePort(remainder.substring(colon + 1));
+        return new InstancePort(instance,
+                colon < 0 ? null : parsePort(remainder.substring(colon + 1)));
     }
 
     /**
@@ -298,7 +327,9 @@ public class ConnectionStringParser {
             host = hostPart;
         }
 
-        return new ParsedConnection(DatabaseType.ORACLE, fullUrl, host, port, database,
+        String jdbcUrl = ParsedConnection.canonicalJdbcUrl(
+                DatabaseType.ORACLE, host, port, database, new LinkedHashMap<>());
+        return new ParsedConnection(DatabaseType.ORACLE, jdbcUrl, host, port, database,
                 null, null, new LinkedHashMap<>());
     }
 
@@ -342,8 +373,36 @@ public class ConnectionStringParser {
             }
         }
 
-        return new ParsedConnection(DatabaseType.H2, fullUrl, host, port, database,
-                null, null, params);
+        Credentials credentials = extractCredentials(params);
+        String jdbcUrl = buildH2JdbcUrl(after, host, port, database, params);
+        return new ParsedConnection(DatabaseType.H2, jdbcUrl, host, port, database,
+                credentials.username(), credentials.password(), params);
+    }
+
+    /**
+     * Build the canonical H2 URL, preserving the original sub-protocol
+     * ({@code mem:}, {@code file:}, {@code tcp://}, {@code http://},
+     * {@code https://}) because it is not derivable from the parsed
+     * host/database components.
+     */
+    private static String buildH2JdbcUrl(String after, String host, Integer port,
+                                         String database, Map<String, String> params) {
+        StringBuilder sb = new StringBuilder("jdbc:h2:");
+        if (after.startsWith("tcp://") || after.startsWith("http://")
+                || after.startsWith("https://")) {
+            sb.append(after, 0, after.indexOf(':') + 3);
+            if (host != null) sb.append(host);
+            if (port != null) sb.append(':').append(port);
+            if (database != null) sb.append(database);
+        } else {
+            int colon = after.indexOf(':');
+            if (colon > 0) {
+                sb.append(after, 0, colon + 1);
+            }
+            if (database != null) sb.append(database);
+        }
+        ParsedConnection.appendParameters(sb, params, ';', ';');
+        return sb.toString();
     }
 
     // -------------------------------------------------------------------
@@ -377,16 +436,16 @@ public class ConnectionStringParser {
             database = rawPath.startsWith("/") ? rawPath.substring(1) : rawPath;
         }
 
-        String username = null;
-        String password = null;
+        String userInfoUser = null;
+        String userInfoPassword = null;
         String rawUserInfo = uri.getRawUserInfo();
         if (rawUserInfo != null) {
             int sep = rawUserInfo.indexOf(':');
             if (sep > 0) {
-                username = decode(rawUserInfo.substring(0, sep));
-                password = decode(rawUserInfo.substring(sep + 1));
+                userInfoUser = decode(rawUserInfo.substring(0, sep));
+                userInfoPassword = decode(rawUserInfo.substring(sep + 1));
             } else {
-                username = decode(rawUserInfo);
+                userInfoUser = decode(rawUserInfo);
             }
         }
 
@@ -396,7 +455,13 @@ public class ConnectionStringParser {
             parseQueryParams(rawQuery, params);
         }
 
-        String jdbcUrl = buildJdbcUrl(type, host, port, database, rawQuery, type == DatabaseType.SQLSERVER);
+        Credentials parameterCredentials = extractCredentials(params);
+        String username = parameterCredentials.username() != null
+                ? parameterCredentials.username() : userInfoUser;
+        String password = parameterCredentials.password() != null
+                ? parameterCredentials.password() : userInfoPassword;
+
+        String jdbcUrl = ParsedConnection.canonicalJdbcUrl(type, host, port, database, params);
         return new ParsedConnection(type, jdbcUrl, host, port, database,
                 username, password, params);
     }
@@ -411,42 +476,57 @@ public class ConnectionStringParser {
         };
     }
 
-    /** Build a JDBC URL from the URI components. */
-    private String buildJdbcUrl(DatabaseType type, String host, Integer port,
-                                String database, String rawQuery, boolean useSemicolons) {
-        StringBuilder sb = new StringBuilder("jdbc:").append(type.id()).append("://");
-        if (host != null) sb.append(host);
-        if (port != null) sb.append(':').append(port);
-
-        if (database != null) {
-            if (useSemicolons) {
-                sb.append(";databaseName=").append(database);
-            } else {
-                sb.append('/').append(database);
-            }
-        }
-
-        if (rawQuery != null) {
-            if (useSemicolons) {
-                // Convert ?a=b&c=d to ;a=b;c=d
-                for (String pair : rawQuery.split("&")) {
-                    sb.append(';').append(pair);
-                }
-            } else {
-                sb.append('?').append(rawQuery);
-            }
-        }
-
-        return sb.toString();
-    }
-
     // -------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------
 
     /** Decode a URL-encoded value, treating '+' as a literal (not a space). */
     private static String decode(String value) {
-        return java.net.URLDecoder.decode(value.replace("+", "%2B"), StandardCharsets.UTF_8);
+        return URLDecoder.decode(value.replace("+", "%2B"), StandardCharsets.UTF_8);
+    }
+
+    /**
+     * Decode a query/parameter value using standard form semantics
+     * ({@code +} means space, {@code %XX} is decoded).
+     */
+    private static String decodeQueryValue(String value) {
+        try {
+            return URLDecoder.decode(value, StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException(
+                    "Invalid connection string: invalid URL parameter value");
+        }
+    }
+
+    /**
+     * Remove {@code user}/{@code password} parameters (any case) from the map
+     * and return them as credentials. They are passed to the driver as
+     * connection properties and are never written into the JDBC URL.
+     */
+    private static Credentials extractCredentials(Map<String, String> params) {
+        String username = null;
+        String password = null;
+        Iterator<Map.Entry<String, String>> it = params.entrySet().iterator();
+        while (it.hasNext()) {
+            Map.Entry<String, String> entry = it.next();
+            if ("user".equalsIgnoreCase(entry.getKey())) {
+                username = entry.getValue();
+                it.remove();
+            } else if ("password".equalsIgnoreCase(entry.getKey())) {
+                password = entry.getValue();
+                it.remove();
+            }
+        }
+        return new Credentials(username, password);
+    }
+
+    private static boolean containsKeyIgnoreCase(Map<String, String> map, String key) {
+        for (String existing : map.keySet()) {
+            if (existing.equalsIgnoreCase(key)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** Parse ?key=value&key2=value2 into the supplied map. */
@@ -458,7 +538,7 @@ public class ConnectionStringParser {
             int eq = pair.indexOf('=');
             String key = eq > 0 ? pair.substring(0, eq) : pair;
             validateParameterKey(key);
-            params.put(key, eq > 0 ? pair.substring(eq + 1) : "");
+            params.put(key, eq > 0 ? decodeQueryValue(pair.substring(eq + 1)) : "");
         }
     }
 
@@ -480,7 +560,7 @@ public class ConnectionStringParser {
             int eq = pair.indexOf('=');
             if (eq > 0) {
                 String key = pair.substring(0, eq);
-                String val = pair.substring(eq + 1);
+                String val = decodeQueryValue(pair.substring(eq + 1));
                 if (validateKeys) {
                     validateParameterKey(key);
                 }
@@ -639,6 +719,14 @@ public class ConnectionStringParser {
 
     /** Result of a parse step that may extract a database name. */
     private record ParsedResult(String database) {
+    }
+
+    /** Credentials taken from user/password URL parameters. */
+    private record Credentials(String username, String password) {
+    }
+
+    /** SQL Server instance name and port parsed from the authority. */
+    private record InstancePort(String instance, Integer port) {
     }
 
     /** Simple pair of host and port. */

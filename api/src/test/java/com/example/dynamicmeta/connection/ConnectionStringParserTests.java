@@ -7,7 +7,10 @@ import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.EmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
 
+import java.util.List;
+
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class ConnectionStringParserTests {
@@ -477,5 +480,158 @@ class ConnectionStringParserTests {
         String str = p.toString();
         assertThat(str).contains("password=***");
         assertThat(str).doesNotContain("secret");
+    }
+
+    // -----------------------------------------------------------------
+    // FX-002: canonical JDBC URL rebuilt from validated parts
+    // -----------------------------------------------------------------
+
+    @Test
+    void rebuildsPostgresJdbcUrlFromParts() {
+        ParsedConnection p = parser.parse(
+                "jdbc:postgresql://dbhost:5432/appdb?ssl=true&connectTimeout=10");
+        assertThat(p.jdbcUrl())
+                .isEqualTo("jdbc:postgresql://dbhost:5432/appdb?ssl=true&connectTimeout=10");
+    }
+
+    @Test
+    void rebuildsMySqlJdbcUrlFromParts() {
+        ParsedConnection p = parser.parse("jdbc:mysql://mysql-host:3306/sales?useSSL=false");
+        assertThat(p.jdbcUrl())
+                .isEqualTo("jdbc:mysql://mysql-host:3306/sales?useSSL=false");
+    }
+
+    @Test
+    void rebuildsMariaDbJdbcUrlFromParts() {
+        ParsedConnection p = parser.parse("jdbc:mariadb://mariadb-host:3307/inventory");
+        assertThat(p.jdbcUrl())
+                .isEqualTo("jdbc:mariadb://mariadb-host:3307/inventory");
+    }
+
+    @Test
+    void rebuildsSqlServerJdbcUrlFromParts() {
+        ParsedConnection p = parser.parse(
+                "jdbc:sqlserver://sql-host:1433;databaseName=reportdb;encrypt=true");
+        assertThat(p.jdbcUrl())
+                .isEqualTo("jdbc:sqlserver://sql-host:1433;databaseName=reportdb;encrypt=true");
+    }
+
+    @Test
+    void rebuildsOracleServiceJdbcUrl() {
+        ParsedConnection p = parser.parse("jdbc:oracle:thin:@//ora-host:1521/myservice");
+        assertThat(p.jdbcUrl())
+                .isEqualTo("jdbc:oracle:thin:@//ora-host:1521/myservice");
+    }
+
+    @Test
+    void rebuildsOracleSidJdbcUrl() {
+        ParsedConnection p = parser.parse("jdbc:oracle:thin:@ora-host:1521:orcl");
+        assertThat(p.jdbcUrl())
+                .isEqualTo("jdbc:oracle:thin:@ora-host:1521:orcl");
+    }
+
+    @Test
+    void rebuildsH2JdbcUrlsPreservingSubProtocol() {
+        assertThat(parser.parse("jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1").jdbcUrl())
+                .isEqualTo("jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1");
+        assertThat(parser.parse("jdbc:h2:file:/data/mydb").jdbcUrl())
+                .isEqualTo("jdbc:h2:file:/data/mydb");
+        assertThat(parser.parse("jdbc:h2:tcp://remotehost:9092/~/testdb").jdbcUrl())
+                .isEqualTo("jdbc:h2:tcp://remotehost:9092/~/testdb");
+    }
+
+    @Test
+    void acceptsUserAndPasswordUrlParameters() {
+        ParsedConnection p = parser.parse("jdbc:postgresql://h:5432/app?user=u&password=p");
+        assertThat(p.username()).isEqualTo("u");
+        assertThat(p.password()).isEqualTo("p");
+        assertThat(p.parameters()).doesNotContainKeys("user", "password");
+        assertThat(p.jdbcUrl()).isEqualTo("jdbc:postgresql://h:5432/app");
+    }
+
+    @Test
+    void acceptsCredentialParametersCaseInsensitivelyAndKeepsOtherParamsInOrder() {
+        ParsedConnection p = parser.parse(
+                "jdbc:postgresql://h/app?ssl=true&USER=alice&applicationName=app&PASSWORD=s3cret");
+        assertThat(p.username()).isEqualTo("alice");
+        assertThat(p.password()).isEqualTo("s3cret");
+        assertThat(p.jdbcUrl())
+                .isEqualTo("jdbc:postgresql://h/app?ssl=true&applicationName=app");
+    }
+
+    @Test
+    void acceptsSqlServerCredentialParameters() {
+        ParsedConnection p = parser.parse(
+                "jdbc:sqlserver://h:1433;databaseName=db;user=u;password=p;encrypt=true");
+        assertThat(p.username()).isEqualTo("u");
+        assertThat(p.password()).isEqualTo("p");
+        assertThat(p.parameters()).doesNotContainKeys("user", "password");
+        assertThat(p.jdbcUrl())
+                .isEqualTo("jdbc:sqlserver://h:1433;databaseName=db;encrypt=true");
+    }
+
+    @Test
+    void decodesAndReencodesParameterValues() {
+        ParsedConnection p = parser.parse(
+                "jdbc:postgresql://h/db?applicationName=my%20app&currentSchema=a/b");
+        assertThat(p.parameters())
+                .containsEntry("applicationName", "my app")
+                .containsEntry("currentSchema", "a/b");
+        assertThat(p.jdbcUrl())
+                .isEqualTo("jdbc:postgresql://h/db?applicationName=my+app&currentSchema=a%2Fb");
+    }
+
+    @Test
+    void preservesParameterInputOrder() {
+        ParsedConnection p = parser.parse(
+                "jdbc:postgresql://h/db?sslmode=require&ssl=true&applicationName=app");
+        assertThat(p.jdbcUrl())
+                .isEqualTo("jdbc:postgresql://h/db?sslmode=require&ssl=true&applicationName=app");
+    }
+
+    @Test
+    void uriFormProducesSameCanonicalUrlAsJdbcForm() {
+        ParsedConnection uri = parser.parse(
+                "postgres://user:p%40ss@h:5432/db?sslmode=require");
+        ParsedConnection jdbc = parser.parse(
+                "jdbc:postgresql://h:5432/db?sslmode=require");
+        assertThat(uri.jdbcUrl()).isEqualTo(jdbc.jdbcUrl());
+        assertThat(uri.jdbcUrl())
+                .isEqualTo("jdbc:postgresql://h:5432/db?sslmode=require");
+        assertThat(uri.username()).isEqualTo("user");
+        assertThat(uri.password()).isEqualTo("p@ss");
+    }
+
+    @Test
+    void uriFormAcceptsCredentialParameters() {
+        ParsedConnection p = parser.parse(
+                "postgres://h/db?user=u&password=p&ssl=true");
+        assertThat(p.username()).isEqualTo("u");
+        assertThat(p.password()).isEqualTo("p");
+        assertThat(p.jdbcUrl()).isEqualTo("jdbc:postgresql://h/db?ssl=true");
+    }
+
+    @Test
+    void sqlServerUriFormRebuildsCanonicalUrl() {
+        ParsedConnection p = parser.parse(
+                "sqlserver://admin@sql-host:1433/reportdb?encrypt=true&trustServerCertificate=true");
+        assertThat(p.jdbcUrl()).isEqualTo(
+                "jdbc:sqlserver://sql-host:1433;databaseName=reportdb;encrypt=true;trustServerCertificate=true");
+    }
+
+    @Test
+    void credentialParametersAreAcceptedByPolicy() {
+        ParsedConnection p = parser.parse("jdbc:postgresql://h/app?user=u&password=p");
+        assertThatCode(() -> new ConnectionPolicy(List.of(), false).validate(p))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void namedSqlServerInstanceIsPreservedAsParameter() {
+        ParsedConnection p = parser.parse(
+                "jdbc:sqlserver://sql-host\\SQLEXPRESS:1433;databaseName=reportdb");
+        assertThat(p.parameters()).containsEntry("instanceName", "SQLEXPRESS");
+        assertThat(p.jdbcUrl())
+                .isEqualTo("jdbc:sqlserver://sql-host:1433;instanceName=SQLEXPRESS;databaseName=reportdb");
     }
 }

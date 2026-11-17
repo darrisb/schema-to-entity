@@ -30,7 +30,7 @@ public class ConnectionPolicy {
 
     private static final Set<String> ALLOWED_SQLSERVER_PARAMS = Set.of(
             "encrypt", "trustservercertificate", "databasename",
-            "logintimeout", "applicationname");
+            "instancename", "logintimeout", "applicationname");
 
     private static final Set<String> ALLOWED_ORACLE_PARAMS = Set.of();
 
