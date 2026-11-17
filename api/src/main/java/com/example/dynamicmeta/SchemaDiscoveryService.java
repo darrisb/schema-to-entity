@@ -196,7 +196,8 @@ public class SchemaDiscoveryService {
         }
 
         List<Map<String, Object>> tables = new ArrayList<>();
-        try (ResultSet rs = metadata.getTables(catalog, schema, "%", new String[]{"TABLE"})) {
+        try (ResultSet rs = metadata.getTables(catalog, escapePattern(metadata, schema), "%",
+                new String[]{"TABLE"})) {
             while (rs.next()) {
                 String name = rs.getString("TABLE_NAME");
                 if (!filter.isEmpty() && !filter.contains(name.toLowerCase(Locale.ROOT))) {
@@ -228,7 +229,8 @@ public class SchemaDiscoveryService {
         }
 
         List<Map<String, Object>> columns = new ArrayList<>();
-        try (ResultSet rs = metadata.getColumns(catalog, schema, table, "%")) {
+        try (ResultSet rs = metadata.getColumns(catalog, escapePattern(metadata, schema),
+                escapePattern(metadata, table), "%")) {
             while (rs.next()) {
                 Map<String, Object> column = new LinkedHashMap<>();
                 String name = rs.getString("COLUMN_NAME");
@@ -281,6 +283,33 @@ public class SchemaDiscoveryService {
             return type + "(" + size + "," + Math.max(scale, 0) + ")";
         }
         return type;
+    }
+
+    /**
+     * Escapes the LIKE wildcard characters in a schema or table name for JDBC metadata lookups.
+     * {@link DatabaseMetaData#getTables} and {@link DatabaseMetaData#getColumns} treat the schema
+     * and table arguments as patterns where '_' and '%' are wildcards, so a table named
+     * {@code user_roles} would otherwise match a table named {@code userXroles}. The driver's own
+     * escape string is escaped first, then '_' and '%'. If the driver does not report an escape
+     * string, the name is returned unchanged.
+     */
+    private static String escapePattern(DatabaseMetaData metadata, String name) throws SQLException {
+        if (name == null) {
+            return null;
+        }
+        String escape = metadata.getSearchStringEscape();
+        if (escape == null || escape.isEmpty()) {
+            return name;
+        }
+        StringBuilder escaped = new StringBuilder(name.length() + 8);
+        for (int i = 0; i < name.length(); i++) {
+            char c = name.charAt(i);
+            if (c == '_' || c == '%' || escape.indexOf(c) >= 0) {
+                escaped.append(escape);
+            }
+            escaped.append(c);
+        }
+        return escaped.toString();
     }
 
     private static String safeGet(ResultSet rs, String column) {
