@@ -87,6 +87,9 @@ schema-to-entity:
   schema: public
   # Include database views and materialized views alongside tables (default: true).
   include-views: true
+  # How long a named source's discovered schema is cached before rediscovery
+  # (default: 10m).
+  schema-cache-ttl: 10m
 ```
 
 Set `web-enabled: false` to use only the Java service.
@@ -121,6 +124,8 @@ schema-to-entity:
 Source names must match `[a-z0-9-]{1,40}`. Each URL is parsed and checked by the same `ConnectionPolicy` as explicit connections, so embedded databases still require `allow-embedded-databases: true`. Invalid sources fail startup with an `IllegalStateException` that names the source and the problem; error messages never include the URL or password.
 
 The data API is **READ-ONLY**: it never issues `INSERT`, `UPDATE`, `DELETE` or DDL.
+
+Each source's schema is discovered once and cached as the typed query allowlist (`SchemaCache`). The cache honours the source's `tables` allowlist and `view-keys`, and re-discovers automatically after `schema-to-entity.schema-cache-ttl` (default `10m`); `SchemaCache.refresh(source)` forces rediscovery.
 
 ## Connection layer
 

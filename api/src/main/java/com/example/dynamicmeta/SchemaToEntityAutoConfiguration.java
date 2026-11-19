@@ -15,6 +15,7 @@ import com.example.dynamicmeta.connection.ConnectionPolicy;
 import com.example.dynamicmeta.connection.ConnectionStringParser;
 import com.example.dynamicmeta.connection.JdbcConnectionFactory;
 import com.example.dynamicmeta.data.DataSourceDefinitions;
+import com.example.dynamicmeta.data.SchemaCache;
 import com.example.dynamicmeta.data.SourceDefinitions;
 import com.example.dynamicmeta.data.SourceRegistry;
 
@@ -69,6 +70,16 @@ public class SchemaToEntityAutoConfiguration {
             SchemaToEntityProperties properties) {
         return new SourceRegistry(definitions.definitions(), jdbcConnectionFactory, parser,
                 properties.getConnectTimeout());
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    @ConditionalOnProperty(prefix = "schema-to-entity", name = "data-api-enabled")
+    SchemaCache schemaCache(
+            SourceRegistry sourceRegistry,
+            SchemaDiscoveryService schemaDiscoveryService,
+            SchemaToEntityProperties properties) {
+        return new SchemaCache(sourceRegistry, schemaDiscoveryService, properties);
     }
 
     @Bean

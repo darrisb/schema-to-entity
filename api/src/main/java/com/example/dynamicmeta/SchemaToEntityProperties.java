@@ -43,6 +43,8 @@ public class SchemaToEntityProperties {
     private int defaultPageSize = 50;
     /** Maximum time a data API query may run before it is cancelled. */
     private Duration queryTimeout = Duration.ofSeconds(15);
+    /** How long a discovered source schema is cached before rediscovery. */
+    private Duration schemaCacheTtl = Duration.ofMinutes(10);
 
     public boolean isEnabled() {
         return enabled;
@@ -162,6 +164,14 @@ public class SchemaToEntityProperties {
 
     public void setQueryTimeout(Duration queryTimeout) {
         this.queryTimeout = queryTimeout;
+    }
+
+    public Duration getSchemaCacheTtl() {
+        return schemaCacheTtl;
+    }
+
+    public void setSchemaCacheTtl(Duration schemaCacheTtl) {
+        this.schemaCacheTtl = schemaCacheTtl;
     }
 
     /**

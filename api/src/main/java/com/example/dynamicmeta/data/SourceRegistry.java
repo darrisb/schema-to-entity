@@ -73,6 +73,19 @@ public class SourceRegistry implements DisposableBean {
         return pools.computeIfAbsent(name, key -> createPool(definition));
     }
 
+    /**
+     * Returns the validated definition for the named source.
+     *
+     * @throws SourceNotFoundException when no source with that name is configured
+     */
+    public DataSourceDefinition definition(String name) {
+        DataSourceDefinition definition = definitions.get(name);
+        if (definition == null) {
+            throw new SourceNotFoundException(name);
+        }
+        return definition;
+    }
+
     /** Returns the configured source names. */
     public Set<String> names() {
         return definitions.keySet();

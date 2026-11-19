@@ -180,8 +180,21 @@ public class SchemaDiscoveryService {
                         safeTables(request.tables())));
     }
 
-    Map<String, Object> inspect(Connection connection, String requestedSchema, List<String> tableFilter)
-            throws SQLException {
+    /**
+     * Reads the schema of an already-open connection. The caller owns the
+     * connection and is responsible for closing it. This is the shared
+     * discovery path used by the application DataSource, explicit connections
+     * and the named data sources.
+     *
+     * @param connection      an open connection, normally read-only
+     * @param requestedSchema schema to inspect; null uses the connection default
+     * @param tableFilter     optional allowlist of table names; empty means all
+     * @return discovered schema metadata: source, dialect, catalog, schema,
+     *         extractedAt and tables
+     * @throws SQLException when the database metadata cannot be read
+     */
+    public Map<String, Object> inspect(Connection connection, String requestedSchema,
+                                       List<String> tableFilter) throws SQLException {
         NamespaceResolver.validateTableFilterSize(tableFilter);
 
         DatabaseMetaData metadata = connection.getMetaData();
