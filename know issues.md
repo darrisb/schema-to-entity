@@ -123,6 +123,26 @@ spurious diffs. There was no root `.gitignore` (only `ui/.gitignore`).
 `git rm --cached`. **The untracking is staged but not committed** — run `git commit` to
 record it.
 
+### 8. Security: the data API has no authentication
+
+**Impact:** `/api/data/**` has no authentication or authorization of its own. Any
+caller that can reach the API can list the entities of every configured source and
+read their rows. There is no per-source access control: anything configured as a
+source is readable by anyone who can reach the API.
+
+**Mitigations in place:**
+
+| Control | Setting / Mechanism | Default |
+|---|---|---|
+| Read-only | Only `SELECT`/`SELECT COUNT(*)` is generated; pools are read-only | always on |
+| CORS | `schema-to-entity.data-allowed-origins` limits browser origins | `[]` (no CORS headers) |
+| Schema cache | Per-source discovery is cached and bounded | `10m` |
+| Secret redaction | Error messages pass through `SecretRedactor` | always on |
+
+**What remains:** No authentication or authorization. Require authentication before
+any non-local deployment and give each source a `SELECT`-only database account. See
+the "Database accounts" and "Named data sources" sections of `api/README.md`.
+
 ## Caveats on the above
 
 The repo has no Hibernate dependency. All Hibernate findings (issue 1, and the successful

@@ -111,6 +111,12 @@ schema-to-entity:
   max-page-size: 200
   default-page-size: 50
   query-timeout: 15s
+  schema-cache-ttl: 10m
+  # Origins allowed to call the read-only data API from a browser. Empty
+  # (default) sends no CORS headers. '*' is allowed only when written
+  # explicitly.
+  data-allowed-origins:
+    - https://app.example.com
   sources:
     orders:
       url: jdbc:postgresql://orders-db:5432/orders
@@ -122,17 +128,139 @@ schema-to-entity:
       tables: [orders, order_items]   # optional allowlist
       ssl: true
       max-pool-size: 4                # 1-20
-      view-keys:                      # view name -> key column
+      view-keys:                      # view name -> key column (viewKeys)
         order_summary: order_id
 ```
 
+### Configuration
+
+| Property | Default | Description |
+|---|---|---|
+| `schema-to-entity.data-api-enabled` | `false` | Registers the read-only data API and its endpoints. |
+| `schema-to-entity.sources` | `{}` | Named read-only sources, keyed by source name. |
+| `schema-to-entity.max-page-size` | `200` | Largest `limit` a caller may request. |
+| `schema-to-entity.default-page-size` | `50` | Rows returned when the caller omits `limit`. |
+| `schema-to-entity.query-timeout` | `15s` | Maximum time a single data query may run. |
+| `schema-to-entity.schema-cache-ttl` | `10m` | How long a source's discovered schema is cached. |
+| `schema-to-entity.data-allowed-origins` | `[]` | Browser origins allowed to call `/api/data/**`. Empty sends no CORS headers. |
+
+Each source accepts:
+
+| Source property | Description |
+|---|---|
+| `url` | JDBC URL, parsed and checked by the same `ConnectionPolicy` as explicit connections. |
+| `username` / `password` | Credentials. The password should come from an environment placeholder such as `${ORDERS_DB_PASSWORD}`. |
+| `schema` | Schema to discover. |
+| `tables` | Optional allowlist of tables/views; empty means everything in the schema. |
+| `ssl` | `true` to require SSL. |
+| `max-pool-size` | Pool size, 1-20, default 4. |
+| `view-keys` (`viewKeys`) | View name to key column, used for views that have no primary key. |
+
 Source names must match `[a-z0-9-]{1,40}`. Each URL is parsed and checked by the same `ConnectionPolicy` as explicit connections, so embedded databases still require `allow-embedded-databases: true`. Invalid sources fail startup with an `IllegalStateException` that names the source and the problem; error messages never include the URL or password.
 
-The data API is **READ-ONLY**: it never issues `INSERT`, `UPDATE`, `DELETE` or DDL.
+The data API is **READ-ONLY**: it only ever issues `SELECT` and `SELECT COUNT(*)`. It never generates `INSERT`, `UPDATE`, `DELETE` or DDL, and every pool is opened with the read-only flag.
+
+### Database accounts
+
+Give each source a database account with **SELECT-only grants** on the schemas and tables it may read. The API never writes, so the account does not need (and should not have) `INSERT`, `UPDATE`, `DELETE` or DDL privileges. Never configure a source with an account that owns or can modify the data.
 
 Browser access is controlled by `schema-to-entity.data-allowed-origins` (default empty, meaning no CORS headers). List origins explicitly, or write `*` to allow any origin. The mapping covers `/api/data/**` only, allows `GET` and `OPTIONS` without credentials, and caches preflight responses for one hour; admin endpoints such as `/api/schema/extract` never receive CORS headers.
 
 Each source's schema is discovered once and cached as the typed query allowlist (`SchemaCache`). The cache honours the source's `tables` allowlist and `view-keys`, and re-discovers automatically after `schema-to-entity.schema-cache-ttl` (default `10m`); `SchemaCache.refresh(source)` forces rediscovery.
+
+### Endpoints
+
+All endpoints are `GET` and return JSON. Errors raised by the data API are returned as `{"error": "..."}` with the message passed through the secret redactor; unmapped methods or paths receive Spring's default error response.
+
+#### `GET /api/data/{source}` — list the entities of a source
+
+```bash
+curl http://localhost:8080/api/data/demo
+```
+
+Returns a JSON array of entity descriptors:
+
+```json
+[
+  {
+    "name": "CUSTOMERS",
+    "kind": "table",
+    "keyColumns": ["ID"],
+    "columns": [
+      { "name": "ID", "type": "bigint", "category": "NUMBER", "nullable": false },
+      { "name": "NAME", "type": "varchar(80)", "category": "TEXT", "nullable": false }
+    ]
+  }
+]
+```
+
+#### `GET /api/data/{source}/{entity}` — query a page of rows
+
+```bash
+curl "http://localhost:8080/api/data/demo/customers?fields=id,name&sort=-id&limit=2&offset=1&eq.active=true&contains.name=ar&total=false"
+```
+
+Returns the `items` envelope:
+
+```json
+{
+  "items": [
+    { "ID": 2, "NAME": "Bob" }
+  ],
+  "total": 5,
+  "limit": 2,
+  "offset": 1
+}
+```
+
+`total` is `null` when `total=false` is sent, and `offset` is `null` when the caller did not send one.
+
+#### `GET /api/data/{source}/{entity}/{key}` — fetch one row by key
+
+```bash
+curl http://localhost:8080/api/data/demo/customers/1
+```
+
+Returns the row as a flat JSON object, or `404` when the key does not match. Entities without a single-column key (for example a view with no `view-keys` entry) return `400`.
+
+### Query parameters
+
+| Parameter | Meaning |
+|---|---|
+| `fields=a,b` | Select columns in request order. Omitted or blank selects every column. |
+| `sort=a,-b` | Order by `a` ascending, then `b` descending. A leading `-` means descending; `+` or no prefix means ascending. At most 3 sort columns. |
+| `limit=n` | Page size. Defaults to `default-page-size`; must be between 1 and `max-page-size`. |
+| `offset=n` | Rows to skip. Must be between 0 and 1,000,000. |
+| `eq.<column>=value` | Exact-match filter. The value is converted from the column's type. |
+| `contains.<column>=text` | Case-insensitive substring filter; only text columns are accepted. |
+| `total=false` | Skip the `COUNT(*)` and return `"total": null`. |
+
+Unknown parameters, unknown columns, more than 10 filters, more than 3 sort columns, duplicate filters and values that cannot be converted for the column type are rejected with `400`. Only `GET` is mapped; other methods receive `405`.
+
+### Status codes
+
+| Status | When |
+|---|---|
+| **200** OK | The request succeeded. |
+| **400** Bad Request | Unknown parameter or column, invalid value, invalid paging, or a key lookup on an entity without a single-column key. |
+| **404** Not Found | Unknown source, unknown entity, or no row for the requested key. |
+| **405** Method Not Allowed | A non-`GET` request to a data endpoint. |
+| **502** Bad Gateway | The database read or schema discovery failed. |
+| **503** Service Unavailable | No pooled connection became available in time. |
+| **504** Gateway Timeout | The query exceeded `query-timeout`. |
+
+### UI data source
+
+The row envelope is designed for a UI library REST data source. Point it at `/api/data/demo/<entity>?fields=id,name` and read the rows from `items` with `responsePath`:
+
+```ts
+const customersDataSource = {
+  url: '/api/data/demo/customers?fields=id,name',
+  responsePath: 'items'
+};
+```
+
+Replace `customers` with any entity name returned by `GET /api/data/demo`. The data source receives the same `{ items, total, limit, offset }` envelope shown above, so paging and total counts are available when the library supports them.
 
 ## Connection layer
 

@@ -29,3 +29,24 @@ schema-to-entity:
   # Maximum number of concurrent schema extractions via explicit connections
   # (default: 4). Excess requests receive HTTP 429.
   max-concurrent-explicit-connections: 4
+  # Read-only data API. The demo source is validated at startup but connects
+  # lazily, so the application still starts when Postgres is not running.
+  data-api-enabled: true
+  max-page-size: 200
+  default-page-size: 50
+  query-timeout: 15s
+  schema-cache-ttl: 10m
+  # Origins allowed to call the read-only data API from a browser. This covers
+  # /api/data/** only. Add the deployed UI origin for production.
+  data-allowed-origins:
+    - http://localhost:4200
+  sources:
+    demo:
+      # Defaults target the compose Postgres on the host port; Docker sets
+      # DEMO_DB_URL to the in-network address. Override the credentials in
+      # production; never commit a real password.
+      url: ${DEMO_DB_URL:jdbc:postgresql://localhost:5433/dynamic_meta_db}
+      username: ${DEMO_DB_USERNAME:dynamic_meta_user}
+      password: ${DEMO_DB_PASSWORD:dynamic_meta_password}
+      schema: ${DEMO_DB_SCHEMA:public}
+      max-pool-size: 4
