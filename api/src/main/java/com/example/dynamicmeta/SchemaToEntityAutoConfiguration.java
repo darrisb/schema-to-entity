@@ -14,12 +14,11 @@ import org.springframework.context.annotation.Configuration;
 import com.example.dynamicmeta.connection.ConnectionPolicy;
 import com.example.dynamicmeta.connection.ConnectionStringParser;
 import com.example.dynamicmeta.connection.JdbcConnectionFactory;
-import com.example.dynamicmeta.data.DataSourceDefinition;
 import com.example.dynamicmeta.data.DataSourceDefinitions;
+import com.example.dynamicmeta.data.SourceDefinitions;
 import com.example.dynamicmeta.data.SourceRegistry;
 
 import javax.sql.DataSource;
-import java.util.Map;
 
 @AutoConfiguration(after = DataSourceAutoConfiguration.class)
 @ConditionalOnClass(DataSource.class)
@@ -53,22 +52,22 @@ public class SchemaToEntityAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean
     @ConditionalOnProperty(prefix = "schema-to-entity", name = "data-api-enabled")
-    Map<String, DataSourceDefinition> dataSourceDefinitions(
+    SourceDefinitions dataSourceDefinitions(
             SchemaToEntityProperties properties,
             ConnectionStringParser parser,
             ConnectionPolicy policy) {
-        return DataSourceDefinitions.from(properties, parser, policy);
+        return new SourceDefinitions(DataSourceDefinitions.from(properties, parser, policy));
     }
 
     @Bean
     @ConditionalOnMissingBean
     @ConditionalOnProperty(prefix = "schema-to-entity", name = "data-api-enabled")
     SourceRegistry sourceRegistry(
-            Map<String, DataSourceDefinition> definitions,
+            SourceDefinitions definitions,
             JdbcConnectionFactory jdbcConnectionFactory,
             ConnectionStringParser parser,
             SchemaToEntityProperties properties) {
-        return new SourceRegistry(definitions, jdbcConnectionFactory, parser,
+        return new SourceRegistry(definitions.definitions(), jdbcConnectionFactory, parser,
                 properties.getConnectTimeout());
     }
 

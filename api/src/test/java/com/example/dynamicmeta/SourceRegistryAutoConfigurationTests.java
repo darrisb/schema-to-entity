@@ -1,5 +1,6 @@
 package com.example.dynamicmeta;
 
+import com.example.dynamicmeta.data.DataSourceDefinition;
 import com.example.dynamicmeta.data.SourceRegistry;
 import org.h2.jdbcx.JdbcDataSource;
 import org.junit.jupiter.api.Test;
@@ -7,6 +8,9 @@ import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.WebApplicationContextRunner;
 
 import javax.sql.DataSource;
+
+import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -51,5 +55,37 @@ class SourceRegistryAutoConfigurationTests {
                     SourceRegistry registry = context.getBean(SourceRegistry.class);
                     assertThat(registry.names()).containsExactly("orders");
                 });
+    }
+
+    @Test
+    void registryUsesValidatedDefinitionsWhenDataSourceDefinitionBeanExists() {
+        runner()
+                .withBean(DataSourceDefinition.class,
+                        SourceRegistryAutoConfigurationTests::rogueDefinition)
+                .withPropertyValues(
+                        "schema-to-entity.data-api-enabled=true",
+                        "schema-to-entity.allow-embedded-databases=true",
+                        "schema-to-entity.sources.orders.url="
+                                + "jdbc:h2:mem:registry_auto_config_orders;DB_CLOSE_DELAY=-1",
+                        "schema-to-entity.sources.orders.username=sa",
+                        "schema-to-entity.sources.orders.max-pool-size=2")
+                .run(context -> {
+                    assertThat(context).hasSingleBean(SourceRegistry.class);
+                    SourceRegistry registry = context.getBean(SourceRegistry.class);
+                    assertThat(registry.names()).containsExactly("orders");
+                });
+    }
+
+    private static DataSourceDefinition rogueDefinition() {
+        return new DataSourceDefinition(
+                "rogue",
+                "jdbc:h2:mem:registry_auto_config_rogue;DB_CLOSE_DELAY=-1",
+                "sa",
+                "",
+                null,
+                List.of(),
+                false,
+                1,
+                Map.of());
     }
 }
