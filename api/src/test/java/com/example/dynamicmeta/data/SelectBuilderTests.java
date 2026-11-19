@@ -78,6 +78,21 @@ class SelectBuilderTests {
     }
 
     @Test
+    void multipleSortColumnsKeepPriorityOrder() {
+        QuerySpec query = new QuerySpec(List.of(), Map.of(), Map.of(),
+                List.of(new QuerySpec.Sort("NAME", QuerySpec.Direction.ASC),
+                        new QuerySpec.Sort("ID", QuerySpec.Direction.DESC)),
+                null, null);
+
+        SqlStatement statement = builder(DatabaseType.POSTGRESQL, null, "public")
+                .select(CUSTOMERS, query);
+
+        assertThat(statement.sql())
+                .isEqualTo("SELECT \"ID\", \"NAME\", \"EMAIL\" FROM \"public\".\"CUSTOMERS\""
+                        + " ORDER BY \"NAME\" ASC, \"ID\" DESC");
+    }
+
+    @Test
     void postgresPagingUsesLimitOffset() {
         SqlStatement statement = builder(DatabaseType.POSTGRESQL, null, "public")
                 .select(CUSTOMERS, spec(

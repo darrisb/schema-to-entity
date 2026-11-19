@@ -135,11 +135,18 @@ public final class SelectBuilder {
     }
 
     private void appendOrderBy(StringBuilder sql, EntityModel entity, QuerySpec query) {
-        QuerySpec.Sort sort = query.sort();
-        if (sort != null) {
-            sql.append(" ORDER BY ")
-                    .append(quote(resolveColumn(entity, sort.column())))
-                    .append(sort.effectiveDirection() == QuerySpec.Direction.DESC ? " DESC" : " ASC");
+        List<QuerySpec.Sort> sorts = query.sorts();
+        if (!sorts.isEmpty()) {
+            sql.append(" ORDER BY ");
+            for (int i = 0; i < sorts.size(); i++) {
+                QuerySpec.Sort sort = sorts.get(i);
+                if (i > 0) {
+                    sql.append(", ");
+                }
+                sql.append(quote(resolveColumn(entity, sort.column())))
+                        .append(sort.effectiveDirection() == QuerySpec.Direction.DESC
+                                ? " DESC" : " ASC");
+            }
             return;
         }
         // SQL Server requires an ORDER BY before OFFSET/FETCH. Without a
