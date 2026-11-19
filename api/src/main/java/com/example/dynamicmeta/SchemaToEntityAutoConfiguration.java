@@ -15,6 +15,7 @@ import com.example.dynamicmeta.connection.ConnectionPolicy;
 import com.example.dynamicmeta.connection.ConnectionStringParser;
 import com.example.dynamicmeta.connection.JdbcConnectionFactory;
 import com.example.dynamicmeta.data.DataController;
+import com.example.dynamicmeta.data.DataCorsConfiguration;
 import com.example.dynamicmeta.data.DataQueryService;
 import com.example.dynamicmeta.data.DataSourceDefinitions;
 import com.example.dynamicmeta.data.QueryParameterParser;
@@ -139,6 +140,19 @@ public class SchemaToEntityAutoConfiguration {
                 havingValue = "true")
         DataController dataController(DataQueryService queryService) {
             return new DataController(queryService);
+        }
+
+        /**
+         * DA-007: browser access to the read-only data endpoints only. The
+         * mapping is path-scoped, so admin endpoints such as
+         * {@code /api/schema/extract} are unaffected.
+         */
+        @Bean
+        @ConditionalOnMissingBean
+        @ConditionalOnProperty(prefix = "schema-to-entity", name = "data-api-enabled",
+                havingValue = "true")
+        DataCorsConfiguration dataCorsConfiguration(SchemaToEntityProperties properties) {
+            return new DataCorsConfiguration(properties);
         }
     }
 }

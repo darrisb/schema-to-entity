@@ -90,6 +90,11 @@ schema-to-entity:
   # How long a named source's discovered schema is cached before rediscovery
   # (default: 10m).
   schema-cache-ttl: 10m
+  # Origins allowed to call the read-only data API from a browser. Empty
+  # (default) sends no CORS headers. '*' is allowed only when written
+  # explicitly.
+  data-allowed-origins:
+    - https://app.example.com
 ```
 
 Set `web-enabled: false` to use only the Java service.
@@ -124,6 +129,8 @@ schema-to-entity:
 Source names must match `[a-z0-9-]{1,40}`. Each URL is parsed and checked by the same `ConnectionPolicy` as explicit connections, so embedded databases still require `allow-embedded-databases: true`. Invalid sources fail startup with an `IllegalStateException` that names the source and the problem; error messages never include the URL or password.
 
 The data API is **READ-ONLY**: it never issues `INSERT`, `UPDATE`, `DELETE` or DDL.
+
+Browser access is controlled by `schema-to-entity.data-allowed-origins` (default empty, meaning no CORS headers). List origins explicitly, or write `*` to allow any origin. The mapping covers `/api/data/**` only, allows `GET` and `OPTIONS` without credentials, and caches preflight responses for one hour; admin endpoints such as `/api/schema/extract` never receive CORS headers.
 
 Each source's schema is discovered once and cached as the typed query allowlist (`SchemaCache`). The cache honours the source's `tables` allowlist and `view-keys`, and re-discovers automatically after `schema-to-entity.schema-cache-ttl` (default `10m`); `SchemaCache.refresh(source)` forces rediscovery.
 

@@ -45,6 +45,12 @@ public class SchemaToEntityProperties {
     private Duration queryTimeout = Duration.ofSeconds(15);
     /** How long a discovered source schema is cached before rediscovery. */
     private Duration schemaCacheTtl = Duration.ofMinutes(10);
+    /**
+     * Origins allowed to call the read-only data API from a browser. Empty
+     * (the default) sends no CORS headers. A literal {@code *} is the only
+     * wildcard and must be written explicitly.
+     */
+    private List<String> dataAllowedOrigins = List.of();
 
     public boolean isEnabled() {
         return enabled;
@@ -172,6 +178,14 @@ public class SchemaToEntityProperties {
 
     public void setSchemaCacheTtl(Duration schemaCacheTtl) {
         this.schemaCacheTtl = schemaCacheTtl;
+    }
+
+    public List<String> getDataAllowedOrigins() {
+        return dataAllowedOrigins;
+    }
+
+    public void setDataAllowedOrigins(List<String> dataAllowedOrigins) {
+        this.dataAllowedOrigins = dataAllowedOrigins;
     }
 
     /**
