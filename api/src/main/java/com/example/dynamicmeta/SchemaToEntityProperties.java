@@ -1,7 +1,11 @@
 package com.example.dynamicmeta;
 
 import java.time.Duration;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+
+import com.example.dynamicmeta.connection.SecretRedactor;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
@@ -24,6 +28,21 @@ public class SchemaToEntityProperties {
     private Duration connectTimeout = Duration.ofSeconds(10);
     private Duration socketTimeout = Duration.ofSeconds(60);
     private int maxConcurrentExplicitConnections = 4;
+
+    /**
+     * Named read-only data sources. The data API reads from these sources by
+     * name; generated UIs cannot and must not send database credentials.
+     */
+    private Map<String, SourceProperties> sources = new LinkedHashMap<>();
+
+    /** Off by default: the read-only data API is opt-in. */
+    private boolean dataApiEnabled = false;
+    /** Maximum number of rows a data API query may return. */
+    private int maxPageSize = 200;
+    /** Number of rows a data API query returns when the caller does not specify one. */
+    private int defaultPageSize = 50;
+    /** Maximum time a data API query may run before it is cancelled. */
+    private Duration queryTimeout = Duration.ofSeconds(15);
 
     public boolean isEnabled() {
         return enabled;
@@ -103,5 +122,145 @@ public class SchemaToEntityProperties {
 
     public void setMaxConcurrentExplicitConnections(int maxConcurrentExplicitConnections) {
         this.maxConcurrentExplicitConnections = maxConcurrentExplicitConnections;
+    }
+
+    public Map<String, SourceProperties> getSources() {
+        return sources;
+    }
+
+    public void setSources(Map<String, SourceProperties> sources) {
+        this.sources = sources;
+    }
+
+    public boolean isDataApiEnabled() {
+        return dataApiEnabled;
+    }
+
+    public void setDataApiEnabled(boolean dataApiEnabled) {
+        this.dataApiEnabled = dataApiEnabled;
+    }
+
+    public int getMaxPageSize() {
+        return maxPageSize;
+    }
+
+    public void setMaxPageSize(int maxPageSize) {
+        this.maxPageSize = maxPageSize;
+    }
+
+    public int getDefaultPageSize() {
+        return defaultPageSize;
+    }
+
+    public void setDefaultPageSize(int defaultPageSize) {
+        this.defaultPageSize = defaultPageSize;
+    }
+
+    public Duration getQueryTimeout() {
+        return queryTimeout;
+    }
+
+    public void setQueryTimeout(Duration queryTimeout) {
+        this.queryTimeout = queryTimeout;
+    }
+
+    /**
+     * Configuration for one named read-only data source. Passwords should be
+     * supplied from the environment through placeholders such as
+     * {@code ${ORDERS_DB_PASSWORD}}; never commit literal passwords.
+     */
+    public static class SourceProperties {
+
+        private String url;
+        private String username;
+        private String password;
+        private String schema;
+        /** Optional allowlist of tables; empty means all tables. */
+        private List<String> tables = List.of();
+        private Boolean ssl;
+        private int maxPoolSize = 4;
+        /** View name to key column, used when a view has no primary key. */
+        private Map<String, String> viewKeys = Map.of();
+
+        public String getUrl() {
+            return url;
+        }
+
+        public void setUrl(String url) {
+            this.url = url;
+        }
+
+        public String getUsername() {
+            return username;
+        }
+
+        public void setUsername(String username) {
+            this.username = username;
+        }
+
+        public String getPassword() {
+            return password;
+        }
+
+        public void setPassword(String password) {
+            this.password = password;
+        }
+
+        public String getSchema() {
+            return schema;
+        }
+
+        public void setSchema(String schema) {
+            this.schema = schema;
+        }
+
+        public List<String> getTables() {
+            return tables;
+        }
+
+        public void setTables(List<String> tables) {
+            this.tables = tables;
+        }
+
+        public Boolean getSsl() {
+            return ssl;
+        }
+
+        public void setSsl(Boolean ssl) {
+            this.ssl = ssl;
+        }
+
+        public int getMaxPoolSize() {
+            return maxPoolSize;
+        }
+
+        public void setMaxPoolSize(int maxPoolSize) {
+            this.maxPoolSize = maxPoolSize;
+        }
+
+        public Map<String, String> getViewKeys() {
+            return viewKeys;
+        }
+
+        public void setViewKeys(Map<String, String> viewKeys) {
+            this.viewKeys = viewKeys;
+        }
+
+        /**
+         * Never prints the password. The URL is passed through
+         * {@link SecretRedactor} because URI-form URLs may carry credentials.
+         */
+        @Override
+        public String toString() {
+            return "SourceProperties[" +
+                    "url=" + (url == null ? "null" : SecretRedactor.redact(url)) +
+                    ", username=" + username +
+                    ", password=" + (password == null ? "null" : "***") +
+                    ", schema=" + schema +
+                    ", tables=" + tables +
+                    ", ssl=" + ssl +
+                    ", maxPoolSize=" + maxPoolSize +
+                    ", viewKeys=" + viewKeys + "]";
+        }
     }
 }

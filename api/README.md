@@ -93,6 +93,35 @@ Set `web-enabled: false` to use only the Java service.
 
 **Security:** explicit connections are **disabled by default** (`explicit-connections-enabled: false`). They let any caller submit database addresses and credentials, so the endpoint has no authentication of its own. Opt in with `explicit-connections-enabled: true` only for local development, or when the endpoint is protected by authentication and authorization. Outside local development it must stay off, or be behind authentication.
 
+## Named data sources (read-only data API)
+
+Generated UIs run in browsers and cannot send database credentials, so the data API reads from sources registered on the server by name. The sources are validated at startup; this is configuration only and nothing connects yet.
+
+```yaml
+schema-to-entity:
+  data-api-enabled: false
+  max-page-size: 200
+  default-page-size: 50
+  query-timeout: 15s
+  sources:
+    orders:
+      url: jdbc:postgresql://orders-db:5432/orders
+      username: orders_reader
+      # Passwords should come from environment placeholders such as
+      # ${ORDERS_DB_PASSWORD}; never commit literal passwords.
+      password: ${ORDERS_DB_PASSWORD}
+      schema: public
+      tables: [orders, order_items]   # optional allowlist
+      ssl: true
+      max-pool-size: 4                # 1-20
+      view-keys:                      # view name -> key column
+        order_summary: order_id
+```
+
+Source names must match `[a-z0-9-]{1,40}`. Each URL is parsed and checked by the same `ConnectionPolicy` as explicit connections, so embedded databases still require `allow-embedded-databases: true`. Invalid sources fail startup with an `IllegalStateException` that names the source and the problem; error messages never include the URL or password.
+
+The data API is **READ-ONLY**: it never issues `INSERT`, `UPDATE`, `DELETE` or DDL.
+
 ## Connection layer
 
 The `com.example.dynamicmeta.connection` package provides a parser, policy engine and factory for opening one-off JDBC connections from caller-supplied strings. The drivers shipped by the demo application cover five database families.
