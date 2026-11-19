@@ -88,9 +88,10 @@ public class JdbcConnectionFactory {
     /**
      * Returns the connection properties for the given parsed connection.
      * Useful for unit tests that inspect the built properties without opening
-     * a real connection.
+     * a real connection, and for pooling wrappers that must apply the same
+     * timeout, SSL and read-only mapping as one-off connections.
      */
-    Properties buildProperties(ParsedConnection parsed,
+    public Properties buildProperties(ParsedConnection parsed,
                                String requestUser,
                                String requestPass,
                                Boolean ssl) {
