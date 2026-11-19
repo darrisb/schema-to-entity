@@ -106,6 +106,29 @@ class SelectBuilderTests {
     }
 
     @Test
+    void mysqlOffsetWithoutLimitUsesMaxBigintLimit() {
+        QuerySpec query = spec(List.of(), Map.of(), Map.of(), null, null, 20);
+
+        SqlStatement mysql = builder(DatabaseType.MYSQL, "shop", null).select(CUSTOMERS, query);
+        assertThat(mysql.sql())
+                .isEqualTo("SELECT `ID`, `NAME`, `EMAIL` FROM `shop`.`CUSTOMERS`"
+                        + " LIMIT 18446744073709551615 OFFSET ?");
+        assertThat(mysql.parameters()).containsExactly(20);
+
+        SqlStatement mariaDb = builder(DatabaseType.MARIADB, null, "shop").select(CUSTOMERS, query);
+        assertThat(mariaDb.sql())
+                .isEqualTo("SELECT `ID`, `NAME`, `EMAIL` FROM `shop`.`CUSTOMERS`"
+                        + " LIMIT 18446744073709551615 OFFSET ?");
+        assertThat(mariaDb.parameters()).containsExactly(20);
+
+        SqlStatement postgres = builder(DatabaseType.POSTGRESQL, null, "public").select(CUSTOMERS, query);
+        assertThat(postgres.sql())
+                .isEqualTo("SELECT \"ID\", \"NAME\", \"EMAIL\" FROM \"public\".\"CUSTOMERS\""
+                        + " OFFSET ?");
+        assertThat(postgres.parameters()).containsExactly(20);
+    }
+
+    @Test
     void qualifiesTablePerDatabase() {
         QuerySpec all = spec(List.of(), Map.of(), Map.of(), null, null, null);
 
@@ -196,6 +219,36 @@ class SelectBuilderTests {
                 .select(CUSTOMERS, spec(
                         List.of(), Map.of(), Map.of("NAME", "a\\b%c_d"), null, null, null));
         assertThat(withBackslash.parameters()).containsExactly("%a\\\\b\\%c\\_d%");
+    }
+
+    @Test
+    void mysqlAndMariaDbContainsUsesDoubledEscapeLiteral() {
+        QuerySpec query = spec(
+                List.of(), Map.of(), Map.of("NAME", "acme"), null, null, null);
+
+        SqlStatement mysql = builder(DatabaseType.MYSQL, "shop", null).select(CUSTOMERS, query);
+        assertThat(mysql.sql())
+                .isEqualTo("SELECT `ID`, `NAME`, `EMAIL` FROM `shop`.`CUSTOMERS`"
+                        + " WHERE LOWER(`NAME`) LIKE LOWER(?) ESCAPE '\\\\'");
+        assertThat(mysql.parameters()).containsExactly("%acme%");
+
+        SqlStatement mariaDb = builder(DatabaseType.MARIADB, null, "shop").select(CUSTOMERS, query);
+        assertThat(mariaDb.sql())
+                .isEqualTo("SELECT `ID`, `NAME`, `EMAIL` FROM `shop`.`CUSTOMERS`"
+                        + " WHERE LOWER(`NAME`) LIKE LOWER(?) ESCAPE '\\\\'");
+        assertThat(mariaDb.parameters()).containsExactly("%acme%");
+    }
+
+    @Test
+    void mysqlContainsStillEscapesWildcardsAndBackslashInParameter() {
+        SqlStatement statement = builder(DatabaseType.MYSQL, "shop", null)
+                .select(CUSTOMERS, spec(
+                        List.of(), Map.of(), Map.of("NAME", "a\\b%c_d"), null, null, null));
+
+        assertThat(statement.sql())
+                .isEqualTo("SELECT `ID`, `NAME`, `EMAIL` FROM `shop`.`CUSTOMERS`"
+                        + " WHERE LOWER(`NAME`) LIKE LOWER(?) ESCAPE '\\\\'");
+        assertThat(statement.parameters()).containsExactly("%a\\\\b\\%c\\_d%");
     }
 
     @Test

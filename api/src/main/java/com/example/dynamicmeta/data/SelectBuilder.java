@@ -126,7 +126,7 @@ public final class SelectBuilder {
         }
         for (Map.Entry<String, String> entry : query.contains().entrySet()) {
             clauses.add("LOWER(" + quote(resolveColumn(entity, entry.getKey())) + ")"
-                    + " LIKE LOWER(?) ESCAPE '" + LIKE_ESCAPE + "'");
+                    + " LIKE LOWER(?)" + likeEscapeClause());
             parameters.add("%" + escapeLike(entry.getValue()) + "%");
         }
         if (!clauses.isEmpty()) {
@@ -173,6 +173,10 @@ public final class SelectBuilder {
         if (limit != null) {
             sql.append(" LIMIT ?");
             parameters.add(limit);
+        } else if (offset != null && isMySqlFamily()) {
+            // MySQL and MariaDB only allow OFFSET together with LIMIT; use the
+            // documented maximum BIGINT idiom when no limit was requested.
+            sql.append(" LIMIT 18446744073709551615");
         }
         if (offset != null) {
             sql.append(" OFFSET ?");
@@ -194,6 +198,10 @@ public final class SelectBuilder {
 
     private boolean includesCatalog() {
         return databaseType == DatabaseType.SQLSERVER || databaseType == DatabaseType.MYSQL;
+    }
+
+    private boolean isMySqlFamily() {
+        return databaseType == DatabaseType.MYSQL || databaseType == DatabaseType.MARIADB;
     }
 
     private String quote(String identifier) {
@@ -219,6 +227,18 @@ public final class SelectBuilder {
         }
         throw new IllegalArgumentException(
                 "Unknown column '" + requested + "' for entity '" + entity.name() + "'");
+    }
+
+    /**
+     * Returns the ESCAPE clause with a dialect-appropriate literal. MySQL and
+     * MariaDB treat backslash as an escape character inside string literals,
+     * so the escape character itself must be doubled there.
+     */
+    private String likeEscapeClause() {
+        if (isMySqlFamily()) {
+            return " ESCAPE '\\\\'";
+        }
+        return " ESCAPE '\\'";
     }
 
     /** Escapes the LIKE wildcards and the escape character itself. */
