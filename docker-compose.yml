@@ -29,7 +29,7 @@ services:
       SPRING_DATASOURCE_USERNAME: orchestrator
       SPRING_DATASOURCE_PASSWORD: orchestrator
       # Read-only data API demo source, pointing at the bundled Postgres.
-      DEMO_DB_URL: jdbc:postgresql://postgres:5432/dynamic_meta_db
+      DEMO_DB_URL: jdbc:postgresql://database:5432/dynamic_meta_db
       DEMO_DB_USERNAME: dynamic_meta_user
       DEMO_DB_PASSWORD: dynamic_meta_password
       DEMO_DB_SCHEMA: public
