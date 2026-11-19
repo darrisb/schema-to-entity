@@ -14,7 +14,10 @@ import org.springframework.context.annotation.Configuration;
 import com.example.dynamicmeta.connection.ConnectionPolicy;
 import com.example.dynamicmeta.connection.ConnectionStringParser;
 import com.example.dynamicmeta.connection.JdbcConnectionFactory;
+import com.example.dynamicmeta.data.DataController;
+import com.example.dynamicmeta.data.DataQueryService;
 import com.example.dynamicmeta.data.DataSourceDefinitions;
+import com.example.dynamicmeta.data.QueryParameterParser;
 import com.example.dynamicmeta.data.SchemaCache;
 import com.example.dynamicmeta.data.SourceDefinitions;
 import com.example.dynamicmeta.data.SourceRegistry;
@@ -84,6 +87,25 @@ public class SchemaToEntityAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
+    @ConditionalOnProperty(prefix = "schema-to-entity", name = "data-api-enabled")
+    QueryParameterParser queryParameterParser(SchemaToEntityProperties properties) {
+        return new QueryParameterParser(properties);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    @ConditionalOnProperty(prefix = "schema-to-entity", name = "data-api-enabled")
+    DataQueryService dataQueryService(
+            SourceRegistry sourceRegistry,
+            SchemaCache schemaCache,
+            QueryParameterParser queryParameterParser,
+            SchemaToEntityProperties properties) {
+        return new DataQueryService(
+                sourceRegistry, schemaCache, queryParameterParser, properties);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
     SchemaDiscoveryService schemaDiscoveryService(
             DataSource dataSource,
             SchemaToEntityProperties properties,
@@ -109,6 +131,14 @@ public class SchemaToEntityAutoConfiguration {
         SchemaDiscoveryController schemaDiscoveryController(
                 SchemaDiscoveryService service, SpringMetadataTransformer transformer) {
             return new SchemaDiscoveryController(service, transformer);
+        }
+
+        @Bean
+        @ConditionalOnMissingBean
+        @ConditionalOnProperty(prefix = "schema-to-entity", name = "data-api-enabled",
+                havingValue = "true")
+        DataController dataController(DataQueryService queryService) {
+            return new DataController(queryService);
         }
     }
 }
