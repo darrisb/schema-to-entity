@@ -210,8 +210,9 @@ class DataControllerTests {
 
     @Test
     void rowsConvertNumbersDatesAndTimestamps() throws Exception {
-        String expectedTimestamp =
-                Timestamp.valueOf("2026-01-15 10:30:00").toInstant().toString();
+        // A TIMESTAMP without a time zone comes back as the stored local
+        // date-time, independent of the JVM's default zone.
+        String expectedTimestamp = "2026-01-15T10:30:00";
 
         mockMvc.perform(get("/api/data/orders/customers")
                         .param("eq.id", "1")

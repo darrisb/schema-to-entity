@@ -116,7 +116,8 @@ public final class DataSourceDefinitions {
                 source.getTables(),
                 source.getSsl(),
                 source.getMaxPoolSize(),
-                source.getViewKeys());
+                source.getViewKeys(),
+                source.getHiddenColumns());
     }
 
     /**

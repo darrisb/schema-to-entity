@@ -206,6 +206,13 @@ public class SchemaToEntityProperties {
         /** View name to key column, used when a view has no primary key. */
         private Map<String, String> viewKeys = Map.of();
 
+        /**
+         * Columns never returned, filtered or listed by the data API. An entry is
+         * either a bare column name (hidden in every table and view of the source)
+         * or {@code entity.column}. Matching ignores case.
+         */
+        private List<String> hiddenColumns = List.of();
+
         public String getUrl() {
             return url;
         }
@@ -270,6 +277,14 @@ public class SchemaToEntityProperties {
             this.viewKeys = viewKeys;
         }
 
+        public List<String> getHiddenColumns() {
+            return hiddenColumns;
+        }
+
+        public void setHiddenColumns(List<String> hiddenColumns) {
+            this.hiddenColumns = hiddenColumns;
+        }
+
         /**
          * Never prints the password. The URL is passed through
          * {@link SecretRedactor} because URI-form URLs may carry credentials.
@@ -284,7 +299,8 @@ public class SchemaToEntityProperties {
                     ", tables=" + tables +
                     ", ssl=" + ssl +
                     ", maxPoolSize=" + maxPoolSize +
-                    ", viewKeys=" + viewKeys + "]";
+                    ", viewKeys=" + viewKeys +
+                    ", hiddenColumns=" + hiddenColumns + "]";
         }
     }
 }

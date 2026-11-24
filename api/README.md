@@ -130,6 +130,9 @@ schema-to-entity:
       max-pool-size: 4                # 1-20
       view-keys:                      # view name -> key column (viewKeys)
         order_summary: order_id
+      hidden-columns:                 # never returned, filtered or listed
+        - password_hash               # bare name: hidden in every table and view
+        - customers.tax_id            # entity.column: hidden in one entity
 ```
 
 ### Configuration
@@ -155,6 +158,7 @@ Each source accepts:
 | `ssl` | `true` to require SSL. |
 | `max-pool-size` | Pool size, 1-20, default 4. |
 | `view-keys` (`viewKeys`) | View name to key column, used for views that have no primary key. |
+| `hidden-columns` (`hiddenColumns`) | Columns the data API never returns, filters on or lists. A bare name hides the column in every table and view of the source; `entity.column` hides it in one entity. Matching ignores case. Hiding a key column leaves that entity without a key, so it can be listed but not fetched by key. |
 
 Source names must match `[a-z0-9-]{1,40}`. Each URL is parsed and checked by the same `ConnectionPolicy` as explicit connections, so embedded databases still require `allow-embedded-databases: true`. Invalid sources fail startup with an `IllegalStateException` that names the source and the problem; error messages never include the URL or password.
 
@@ -215,6 +219,11 @@ Returns the `items` envelope:
 
 `total` is `null` when `total=false` is sent, and `offset` is `null` when the caller did not send one.
 
+Values keep their JSON types, with two exceptions that protect browser clients:
+
+- Whole numbers larger than JavaScript's safe integer range (2^53 - 1, for example big `BIGINT` keys) are returned as strings, so a browser cannot round them to a different value.
+- Timestamps without a time zone are returned as local date-times (`2026-01-15T10:30:00`), exactly as stored; timestamps with a time zone keep their offset. Dates are `yyyy-MM-dd`. Binary columns are `null`.
+
 #### `GET /api/data/{source}/{entity}/{key}` — fetch one row by key
 
 ```bash
@@ -248,6 +257,8 @@ Unknown parameters, unknown columns, more than 10 filters, more than 3 sort colu
 | **502** Bad Gateway | The database read or schema discovery failed. |
 | **503** Service Unavailable | No pooled connection became available in time. |
 | **504** Gateway Timeout | The query exceeded `query-timeout`. |
+
+For `502`, `503` and `504` the response carries a generic message (for example `{"error": "Database query failed"}`). The database driver's own message can name tables or quote SQL, so it is written to the server log instead of being returned to callers.
 
 ### UI data source
 

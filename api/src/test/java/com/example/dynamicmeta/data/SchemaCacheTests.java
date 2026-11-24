@@ -267,6 +267,57 @@ class SchemaCacheTests {
                 .run(context -> assertThat(context).doesNotHaveBean(SchemaCache.class));
     }
 
+    @Test
+    void hiddenColumnsAreLeftOutOfTheModel() throws Exception {
+        seed("ste-cache-hidden",
+                "create table users (id bigint primary key, email varchar(120), "
+                        + "password_hash varchar(200))",
+                "create view user_emails as select id, email from users");
+        SourceProperties source = h2Source("ste-cache-hidden");
+        source.setViewKeys(Map.of("user_emails", "id"));
+        // Bare name hides the column everywhere; entity.column hides it in one entity.
+        source.setHiddenColumns(List.of("PASSWORD_HASH", "users.email"));
+        SchemaCache cache = new SchemaCache(registry(source), discovery(),
+                new SchemaToEntityProperties());
+
+        SourceSchema schema = cache.get("orders");
+
+        assertThat(schema.entity("users").columns()).extracting(ColumnModel::name)
+                .containsExactly("ID");
+        assertThat(schema.entity("users").keyColumns()).containsExactly("ID");
+        assertThat(schema.entity("user_emails").columns()).extracting(ColumnModel::name)
+                .containsExactly("ID", "EMAIL");
+    }
+
+    @Test
+    void hidingTheKeyColumnRemovesTheKey() throws Exception {
+        seed("ste-cache-hidden-key",
+                "create table tokens (id bigint primary key, label varchar(40))");
+        SourceProperties source = h2Source("ste-cache-hidden-key");
+        source.setHiddenColumns(List.of("id"));
+        SchemaCache cache = new SchemaCache(registry(source), discovery(),
+                new SchemaToEntityProperties());
+
+        EntityModel tokens = cache.get("orders").entity("tokens");
+
+        assertThat(tokens.columns()).extracting(ColumnModel::name).containsExactly("LABEL");
+        assertThat(tokens.keyColumns()).isEmpty();
+    }
+
+    @Test
+    void unknownSourceIsRejectedWithoutBeingCached() throws Exception {
+        SchemaCache cache = new SchemaCache(registry(h2Source("ste-cache-unknown-names")),
+                discovery(), new SchemaToEntityProperties());
+
+        for (int i = 0; i < 3; i++) {
+            String name = "random-" + i;
+            assertThatThrownBy(() -> cache.get(name))
+                    .isInstanceOf(SourceNotFoundException.class);
+            assertThatThrownBy(() -> cache.refresh(name))
+                    .isInstanceOf(SourceNotFoundException.class);
+        }
+    }
+
     // -------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------

@@ -61,7 +61,7 @@ class SelectBuilderTests {
 
         assertThat(statement.sql())
                 .isEqualTo("SELECT \"ID\", \"NAME\", \"EMAIL\" FROM \"public\".\"CUSTOMERS\""
-                        + " WHERE \"ID\" = ? AND LOWER(\"NAME\") LIKE LOWER(?) ESCAPE '\\'");
+                        + " WHERE \"ID\" = ? AND LOWER(\"NAME\") LIKE LOWER(?) ESCAPE '!'");
         assertThat(statement.parameters()).containsExactly(7, "%acme%");
     }
 
@@ -227,43 +227,58 @@ class SelectBuilderTests {
 
         assertThat(statement.sql())
                 .isEqualTo("SELECT \"ID\", \"NAME\", \"EMAIL\" FROM \"public\".\"CUSTOMERS\""
-                        + " WHERE LOWER(\"NAME\") LIKE LOWER(?) ESCAPE '\\'");
-        assertThat(statement.parameters()).containsExactly("%50\\%\\_off%");
+                        + " WHERE LOWER(\"NAME\") LIKE LOWER(?) ESCAPE '!'");
+        assertThat(statement.parameters()).containsExactly("%50!%!_off%");
 
         SqlStatement withBackslash = builder(DatabaseType.POSTGRESQL, null, "public")
                 .select(CUSTOMERS, spec(
                         List.of(), Map.of(), Map.of("NAME", "a\\b%c_d"), null, null, null));
-        assertThat(withBackslash.parameters()).containsExactly("%a\\\\b\\%c\\_d%");
+        // Backslash is ordinary text; only the '!' escape character is doubled.
+        assertThat(withBackslash.parameters()).containsExactly("%a\\b!%c!_d%");
+
+        SqlStatement withBang = builder(DatabaseType.POSTGRESQL, null, "public")
+                .select(CUSTOMERS, spec(
+                        List.of(), Map.of(), Map.of("NAME", "wow!50%"), null, null, null));
+        assertThat(withBang.parameters()).containsExactly("%wow!!50!%%");
     }
 
     @Test
-    void mysqlAndMariaDbContainsUsesDoubledEscapeLiteral() {
+    void mysqlAndMariaDbContainsUseTheSameEscapeClause() {
         QuerySpec query = spec(
                 List.of(), Map.of(), Map.of("NAME", "acme"), null, null, null);
 
         SqlStatement mysql = builder(DatabaseType.MYSQL, "shop", null).select(CUSTOMERS, query);
         assertThat(mysql.sql())
                 .isEqualTo("SELECT `ID`, `NAME`, `EMAIL` FROM `shop`.`CUSTOMERS`"
-                        + " WHERE LOWER(`NAME`) LIKE LOWER(?) ESCAPE '\\\\'");
+                        + " WHERE LOWER(`NAME`) LIKE LOWER(?) ESCAPE '!'");
         assertThat(mysql.parameters()).containsExactly("%acme%");
 
         SqlStatement mariaDb = builder(DatabaseType.MARIADB, null, "shop").select(CUSTOMERS, query);
         assertThat(mariaDb.sql())
                 .isEqualTo("SELECT `ID`, `NAME`, `EMAIL` FROM `shop`.`CUSTOMERS`"
-                        + " WHERE LOWER(`NAME`) LIKE LOWER(?) ESCAPE '\\\\'");
+                        + " WHERE LOWER(`NAME`) LIKE LOWER(?) ESCAPE '!'");
         assertThat(mariaDb.parameters()).containsExactly("%acme%");
     }
 
     @Test
-    void mysqlContainsStillEscapesWildcardsAndBackslashInParameter() {
+    void mysqlContainsEscapesWildcardsAndKeepsBackslashLiteral() {
         SqlStatement statement = builder(DatabaseType.MYSQL, "shop", null)
                 .select(CUSTOMERS, spec(
                         List.of(), Map.of(), Map.of("NAME", "a\\b%c_d"), null, null, null));
 
         assertThat(statement.sql())
                 .isEqualTo("SELECT `ID`, `NAME`, `EMAIL` FROM `shop`.`CUSTOMERS`"
-                        + " WHERE LOWER(`NAME`) LIKE LOWER(?) ESCAPE '\\\\'");
-        assertThat(statement.parameters()).containsExactly("%a\\\\b\\%c\\_d%");
+                        + " WHERE LOWER(`NAME`) LIKE LOWER(?) ESCAPE '!'");
+        assertThat(statement.parameters()).containsExactly("%a\\b!%c!_d%");
+    }
+
+    @Test
+    void mariaDbQualifiesTablesWithTheCatalog() {
+        // MariaDB, like MySQL, reports each database as a catalog with no schema.
+        SqlStatement statement = builder(DatabaseType.MARIADB, "shop", null)
+                .select(CUSTOMERS, spec(List.of(), Map.of(), Map.of(), null, null, null));
+        assertThat(statement.sql())
+                .isEqualTo("SELECT `ID`, `NAME`, `EMAIL` FROM `shop`.`CUSTOMERS`");
     }
 
     @Test
@@ -277,7 +292,7 @@ class SelectBuilderTests {
 
         assertThat(count.sql())
                 .isEqualTo("SELECT COUNT(*) FROM \"public\".\"CUSTOMERS\""
-                        + " WHERE \"ID\" = ? AND LOWER(\"NAME\") LIKE LOWER(?) ESCAPE '\\'");
+                        + " WHERE \"ID\" = ? AND LOWER(\"NAME\") LIKE LOWER(?) ESCAPE '!'");
         assertThat(count.parameters()).containsExactly(7, "%acme%");
     }
 

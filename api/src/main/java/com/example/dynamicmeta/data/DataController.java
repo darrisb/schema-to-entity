@@ -10,6 +10,8 @@ import java.util.Map;
 import com.example.dynamicmeta.connection.ConnectionException;
 import com.example.dynamicmeta.connection.SecretRedactor;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.util.MultiValueMap;
@@ -19,6 +21,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 /**
  * Read-only REST endpoints for the named data sources.
@@ -31,6 +34,18 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/data")
 public class DataController {
+
+    /**
+     * Messages returned for database-side failures. The data endpoints are meant
+     * to be called by anonymous browsers, so driver messages (which can name
+     * tables, quote SQL or describe the server) are logged, never returned.
+     */
+    static final String QUERY_FAILED = "Database query failed";
+    static final String QUERY_TIMED_OUT = "Database query timed out";
+    static final String SOURCE_BUSY = "Data source is busy; try again shortly";
+    static final String SOURCE_UNAVAILABLE = "Data source is unavailable";
+
+    private static final Logger log = LoggerFactory.getLogger(DataController.class);
 
     private final DataQueryService queryService;
 
@@ -98,30 +113,44 @@ public class DataController {
         return ResponseEntity.badRequest().body(error(exception.getMessage()));
     }
 
+    /** A malformed {@code total} (or other typed) parameter is a client error. */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<Map<String, String>> badParameter(
+            MethodArgumentTypeMismatchException exception) {
+        return ResponseEntity.badRequest()
+                .body(error("Invalid value for parameter '" + exception.getName() + "'"));
+    }
+
     @ExceptionHandler(SQLTimeoutException.class)
     public ResponseEntity<Map<String, String>> queryTimeout(SQLTimeoutException exception) {
-        return ResponseEntity.status(HttpStatus.GATEWAY_TIMEOUT)
-                .body(error(exception.getMessage()));
+        logFailure("Data query timed out", exception);
+        return ResponseEntity.status(HttpStatus.GATEWAY_TIMEOUT).body(error(QUERY_TIMED_OUT));
     }
 
     @ExceptionHandler(SQLTransientConnectionException.class)
     public ResponseEntity<Map<String, String>> poolTimeout(
             SQLTransientConnectionException exception) {
-        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-                .body(error(exception.getMessage()));
+        logFailure("No pooled connection available", exception);
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(error(SOURCE_BUSY));
     }
 
     @ExceptionHandler(SQLException.class)
     public ResponseEntity<Map<String, String>> sqlFailure(SQLException exception) {
-        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
-                .body(error(exception.getMessage()));
+        logFailure("Data query failed", exception);
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(error(QUERY_FAILED));
     }
 
     @ExceptionHandler(ConnectionException.class)
     public ResponseEntity<Map<String, String>> connectionFailure(
             ConnectionException exception) {
-        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
-                .body(error(exception.getMessage()));
+        logFailure("Data source connection failed", exception);
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(error(SOURCE_UNAVAILABLE));
+    }
+
+    /** Logs the real failure for operators; the message is still redacted. */
+    private static void logFailure(String summary, Exception exception) {
+        log.warn("{}: {}", summary, SecretRedactor.redact(exception.getMessage()));
+        log.debug(summary, exception);
     }
 
     private static ResponseEntity<Map<String, String>> notFound(RuntimeException exception) {

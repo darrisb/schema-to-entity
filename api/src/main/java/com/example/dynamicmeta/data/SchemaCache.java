@@ -70,6 +70,7 @@ public class SchemaCache {
      * @throws SourceNotFoundException when the source is not configured
      */
     public SourceSchema get(String source) {
+        requireConfigured(source);
         CachedSchema cached = cache.get(source);
         if (cached != null && !expired(cached)) {
             return cached.schema();
@@ -92,6 +93,7 @@ public class SchemaCache {
      * @throws SourceNotFoundException when the source is not configured
      */
     public SourceSchema refresh(String source) {
+        requireConfigured(source);
         Object lock = locks.computeIfAbsent(source, key -> new Object());
         synchronized (lock) {
             SourceSchema schema = discover(source);
@@ -110,6 +112,16 @@ public class SchemaCache {
         return get(source).entity(entity);
     }
 
+    /**
+     * Rejects unknown names before anything is stored for them, so requests for
+     * random source names cannot grow the lock map.
+     */
+    private void requireConfigured(String source) {
+        if (source == null || !registry.names().contains(source)) {
+            throw new SourceNotFoundException(source);
+        }
+    }
+
     private boolean expired(CachedSchema cached) {
         return !clock.instant().isBefore(cached.discoveredAt().plus(ttl));
     }
@@ -119,7 +131,8 @@ public class SchemaCache {
         try (Connection connection = registry.get(source).getConnection()) {
             Map<String, Object> discovered = discoveryService.inspect(
                     connection, definition.schema(), definition.tables());
-            return toSourceSchema(discovered, definition.viewKeys());
+            return toSourceSchema(discovered, definition.viewKeys(),
+                    definition.hiddenColumns());
         } catch (SQLException e) {
             // Never include the SQLException message: driver errors can carry
             // the JDBC URL or credentials.
@@ -129,12 +142,14 @@ public class SchemaCache {
     }
 
     private static SourceSchema toSourceSchema(Map<String, Object> discovered,
-                                                Map<String, String> viewKeys) {
+                                                Map<String, String> viewKeys,
+                                                List<String> hiddenColumns) {
         Map<String, EntityModel> entities = new LinkedHashMap<>();
         if (discovered.get("tables") instanceof List<?> tables) {
             for (Object item : tables) {
                 if (item instanceof Map<?, ?> table) {
-                    EntityModel entity = toEntityModel(asStringKeyMap(table), viewKeys);
+                    EntityModel entity = toEntityModel(asStringKeyMap(table), viewKeys,
+                            hiddenColumns);
                     entities.put(entity.name().toLowerCase(Locale.ROOT), entity);
                 }
             }
@@ -151,7 +166,8 @@ public class SchemaCache {
     }
 
     private static EntityModel toEntityModel(Map<String, Object> table,
-                                              Map<String, String> viewKeys) {
+                                              Map<String, String> viewKeys,
+                                              List<String> hiddenColumns) {
         String name = (String) table.get("name");
         String kind = (String) table.get("kind");
 
@@ -161,6 +177,9 @@ public class SchemaCache {
                 if (item instanceof Map<?, ?> column) {
                     Map<String, Object> columnMap = asStringKeyMap(column);
                     String columnName = (String) columnMap.get("name");
+                    if (isHidden(name, columnName, hiddenColumns)) {
+                        continue;
+                    }
                     String type = (String) columnMap.get("type");
                     columns.add(new ColumnModel(
                             columnName,
@@ -174,7 +193,33 @@ public class SchemaCache {
         List<String> keyColumns = "table".equals(kind)
                 ? primaryKeyColumns(table.get("primaryKey"))
                 : viewKeyColumns(name, columns, viewKeys);
-        return new EntityModel(name, kind, columns, keyColumns);
+        // A hidden key column leaves the entity without a usable key, so it can
+        // still be listed but not fetched by key.
+        boolean keyHidden = keyColumns.stream()
+                .anyMatch(key -> isHidden(name, key, hiddenColumns));
+        return new EntityModel(name, kind, columns, keyHidden ? List.of() : keyColumns);
+    }
+
+    /**
+     * True when the column is configured as hidden, either by bare column name
+     * (every entity) or as {@code entity.column}. Matching ignores case.
+     */
+    static boolean isHidden(String entity, String column, List<String> hiddenColumns) {
+        if (column == null || hiddenColumns == null || hiddenColumns.isEmpty()) {
+            return false;
+        }
+        String qualified = entity == null ? null : entity + "." + column;
+        for (String hidden : hiddenColumns) {
+            if (hidden == null) {
+                continue;
+            }
+            String entry = hidden.trim();
+            if (entry.equalsIgnoreCase(column)
+                    || (qualified != null && entry.equalsIgnoreCase(qualified))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static List<String> primaryKeyColumns(Object primaryKey) {

@@ -33,7 +33,13 @@ import com.example.dynamicmeta.connection.DatabaseType;
  */
 public final class SelectBuilder {
 
-    private static final char LIKE_ESCAPE = '\\';
+    /**
+     * LIKE escape character. '!' is used instead of backslash because backslash
+     * means different things in string literals across databases (MySQL treats it
+     * as an escape unless NO_BACKSLASH_ESCAPES is set), while '!' is plain text
+     * everywhere, so one ESCAPE clause works for every supported database.
+     */
+    private static final char LIKE_ESCAPE = '!';
 
     private final DatabaseType databaseType;
     private final String catalog;
@@ -126,7 +132,7 @@ public final class SelectBuilder {
         }
         for (Map.Entry<String, String> entry : query.contains().entrySet()) {
             clauses.add("LOWER(" + quote(resolveColumn(entity, entry.getKey())) + ")"
-                    + " LIKE LOWER(?)" + likeEscapeClause());
+                    + " LIKE LOWER(?) ESCAPE '" + LIKE_ESCAPE + "'");
             parameters.add("%" + escapeLike(entry.getValue()) + "%");
         }
         if (!clauses.isEmpty()) {
@@ -204,7 +210,10 @@ public final class SelectBuilder {
     }
 
     private boolean includesCatalog() {
-        return databaseType == DatabaseType.SQLSERVER || databaseType == DatabaseType.MYSQL;
+        // MySQL and MariaDB keep each database as a catalog (schema is null), so the
+        // catalog is what points the query at the source's configured database.
+        return databaseType == DatabaseType.SQLSERVER || databaseType == DatabaseType.MYSQL
+                || databaseType == DatabaseType.MARIADB;
     }
 
     private boolean isMySqlFamily() {
@@ -234,18 +243,6 @@ public final class SelectBuilder {
         }
         throw new IllegalArgumentException(
                 "Unknown column '" + requested + "' for entity '" + entity.name() + "'");
-    }
-
-    /**
-     * Returns the ESCAPE clause with a dialect-appropriate literal. MySQL and
-     * MariaDB treat backslash as an escape character inside string literals,
-     * so the escape character itself must be doubled there.
-     */
-    private String likeEscapeClause() {
-        if (isMySqlFamily()) {
-            return " ESCAPE '\\\\'";
-        }
-        return " ESCAPE '\\'";
     }
 
     /** Escapes the LIKE wildcards and the escape character itself. */

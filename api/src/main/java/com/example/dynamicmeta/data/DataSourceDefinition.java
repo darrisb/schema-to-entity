@@ -27,7 +27,8 @@ public record DataSourceDefinition(
         List<String> tables,
         Boolean ssl,
         int maxPoolSize,
-        Map<String, String> viewKeys) {
+        Map<String, String> viewKeys,
+        List<String> hiddenColumns) {
 
     public DataSourceDefinition {
         tables = tables == null
@@ -36,6 +37,17 @@ public record DataSourceDefinition(
         viewKeys = viewKeys == null
                 ? Map.of()
                 : Collections.unmodifiableMap(new LinkedHashMap<>(viewKeys));
+        hiddenColumns = hiddenColumns == null
+                ? List.of()
+                : Collections.unmodifiableList(new ArrayList<>(hiddenColumns));
+    }
+
+    /** Definition without hidden columns. */
+    public DataSourceDefinition(String name, String url, String username, String password,
+                                String schema, List<String> tables, Boolean ssl,
+                                int maxPoolSize, Map<String, String> viewKeys) {
+        this(name, url, username, password, schema, tables, ssl, maxPoolSize, viewKeys,
+                List.of());
     }
 
     @Override
@@ -49,6 +61,7 @@ public record DataSourceDefinition(
                 ", tables=" + tables +
                 ", ssl=" + ssl +
                 ", maxPoolSize=" + maxPoolSize +
-                ", viewKeys=" + viewKeys + "]";
+                ", viewKeys=" + viewKeys +
+                ", hiddenColumns=" + hiddenColumns + "]";
     }
 }

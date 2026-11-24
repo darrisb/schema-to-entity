@@ -1,6 +1,7 @@
 package com.example.dynamicmeta.data;
 
 import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -34,7 +35,9 @@ import com.example.dynamicmeta.connection.DatabaseType;
  * are taken from the {@link SourceRegistry}, and every statement is given the
  * configured query timeout and row limit. Rows are returned as ordered maps
  * with numbers kept as numbers, dates and timestamps rendered as ISO-8601
- * strings and binary columns returned as {@code null}.
+ * strings and binary columns returned as {@code null}. Whole numbers outside
+ * JavaScript's safe integer range are returned as strings so browsers do not
+ * round them, and timestamps without a time zone stay local date-times.
  * <p>
  * The service only ever issues {@code SELECT} and {@code SELECT COUNT(*)}
  * statements; it never generates INSERT, UPDATE, DELETE or DDL.
@@ -208,12 +211,19 @@ public final class DataQueryService {
 
     private static Object readValue(ResultSet resultSet, ResultSetMetaData metadata,
                                     int index) throws SQLException {
-        if (isBinary(metadata.getColumnType(index))) {
+        int sqlType = metadata.getColumnType(index);
+        if (isBinary(sqlType)) {
             return null;
         }
+        String temporal = readTemporal(resultSet, metadata, index, sqlType);
+        if (temporal != null) {
+            return temporal.isEmpty() ? null : temporal;
+        }
         Object value = resultSet.getObject(index);
-        if (value == null || value instanceof Number || value instanceof Boolean
-                || value instanceof String) {
+        if (value instanceof Number number) {
+            return toJsonNumber(number);
+        }
+        if (value == null || value instanceof Boolean || value instanceof String) {
             return value;
         }
         if (value instanceof java.sql.Timestamp timestamp) {
@@ -229,7 +239,7 @@ public final class DataQueryService {
             return date.toString();
         }
         if (value instanceof LocalDateTime dateTime) {
-            return dateTime.toString();
+            return dateTime.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
         }
         if (value instanceof LocalTime time) {
             return time.toString();
@@ -238,7 +248,7 @@ public final class DataQueryService {
             return instant.toString();
         }
         if (value instanceof OffsetDateTime dateTime) {
-            return dateTime.toString();
+            return dateTime.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
         }
         if (value instanceof OffsetTime time) {
             return time.toString();
@@ -250,6 +260,67 @@ public final class DataQueryService {
             return null;
         }
         return String.valueOf(value);
+    }
+
+    /**
+     * Reads timestamp columns through the java.time API so a value stored without
+     * a time zone is not shifted by the JVM's default zone (java.sql.Timestamp
+     * would interpret it in that zone and then print it as UTC).
+     *
+     * @return the ISO-8601 text, an empty string for SQL NULL, or null when the
+     *         column is not a timestamp or the driver cannot convert it (the caller
+     *         then falls back to getObject)
+     */
+    private static String readTemporal(ResultSet resultSet, ResultSetMetaData metadata,
+                                       int index, int sqlType) {
+        if (sqlType != Types.TIMESTAMP && sqlType != Types.TIMESTAMP_WITH_TIMEZONE) {
+            return null;
+        }
+        String typeName;
+        try {
+            typeName = String.valueOf(metadata.getColumnTypeName(index)).toLowerCase(java.util.Locale.ROOT);
+        } catch (SQLException e) {
+            typeName = "";
+        }
+        boolean withZone = sqlType == Types.TIMESTAMP_WITH_TIMEZONE
+                || typeName.contains("timestamptz") || typeName.contains("time zone");
+        try {
+            if (withZone) {
+                OffsetDateTime value = resultSet.getObject(index, OffsetDateTime.class);
+                return value == null ? "" : value.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
+            }
+            LocalDateTime value = resultSet.getObject(index, LocalDateTime.class);
+            return value == null ? "" : value.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+        } catch (SQLException | RuntimeException unsupported) {
+            return null;
+        }
+    }
+
+    /** Largest integer a JavaScript number holds exactly (2^53 - 1). */
+    private static final long MAX_SAFE_INTEGER = 9_007_199_254_740_991L;
+
+    /**
+     * Keeps numbers as numbers unless they are whole numbers beyond JavaScript's
+     * safe integer range, which are returned as strings (for example large
+     * BIGINT keys) so a browser cannot round them to a different value.
+     */
+    static Object toJsonNumber(Number number) {
+        if (number instanceof Long value) {
+            return Math.abs(value) > MAX_SAFE_INTEGER || value == Long.MIN_VALUE
+                    ? Long.toString(value) : value;
+        }
+        if (number instanceof BigInteger value) {
+            return value.abs().compareTo(BigInteger.valueOf(MAX_SAFE_INTEGER)) > 0
+                    ? value.toString() : value;
+        }
+        if (number instanceof BigDecimal value) {
+            boolean whole = value.signum() == 0 || value.stripTrailingZeros().scale() <= 0;
+            if (whole && value.abs().compareTo(BigDecimal.valueOf(MAX_SAFE_INTEGER)) > 0) {
+                return value.toPlainString();
+            }
+            return value;
+        }
+        return number;
     }
 
     private static boolean isBinary(int sqlType) {
