@@ -259,6 +259,34 @@ class GraphControllerTests {
     }
 
     @Test
+    void manualRelationshipCanBeDecided() throws Exception {
+        String manualId = "sales:orders.id->billing:invoices.id";
+
+        mockMvc.perform(post("/api/graph/overlay/relationships")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"from": "sales:orders.id", "to": "billing:invoices.id"}"""))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(manualId));
+
+        // A manual relationship is in the document, so a decision names it.
+        decide(manualId, "confirmed");
+
+        mockMvc.perform(get("/api/graph"))
+                .andExpect(jsonPath(
+                        "$.relationships[?(@.id == '" + manualId + "')].status")
+                        .value(hasItem("confirmed")));
+
+        // The decision can be cleared again.
+        decide(manualId, null);
+
+        mockMvc.perform(get("/api/graph"))
+                .andExpect(jsonPath(
+                        "$.relationships[?(@.id == '" + manualId + "')].status")
+                        .value(hasItem("confirmed")));
+    }
+
+    @Test
     void unknownIdsReturn404() throws Exception {
         mockMvc.perform(put("/api/graph/overlay/relationships")
                         .contentType(MediaType.APPLICATION_JSON)

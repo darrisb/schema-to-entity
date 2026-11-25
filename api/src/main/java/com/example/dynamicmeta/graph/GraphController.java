@@ -37,9 +37,11 @@ import org.springframework.web.bind.annotation.RestController;
  * <p>
  * The document served is the built graph with the overlay applied, so every
  * read reflects the stored edits. Id validation is against the built graph
- * before the overlay, so an id whose relationship was rejected — or whose
- * edit is an orphan in the overlay — can still be named when clearing or
- * replacing a decision.
+ * before the overlay plus the overlay's manual relationships, so an id
+ * whose relationship was rejected — or whose edit is an orphan in the
+ * overlay — can still be named when clearing or replacing a decision, and a
+ * manual relationship is decided like any other relationship of the
+ * document.
  */
 @RestController
 @RequestMapping("/api/graph")
@@ -267,11 +269,20 @@ public class GraphController {
                 || GraphRelationship.REJECTED.equals(value);
     }
 
-    /** The relationship ids of the built document, before the overlay. */
+    /**
+     * The relationship ids a decision may name: those of the built document,
+     * before the overlay — so an id whose relationship was rejected, or
+     * whose decision is an orphan, can still be named when clearing or
+     * replacing it — plus the overlay's manual relationships, which exist
+     * only in the overlay but are part of the served document.
+     */
     private Set<String> relationshipIds() {
         Set<String> ids = new HashSet<>();
         for (GraphRelationship relationship : builder.build(null).relationships()) {
             ids.add(relationship.id());
+        }
+        for (Overlay.ManualRelationship manual : overlayStore.overlay().manualRelationships()) {
+            ids.add(GraphIds.relationshipId(manual.from(), manual.to()));
         }
         return ids;
     }
