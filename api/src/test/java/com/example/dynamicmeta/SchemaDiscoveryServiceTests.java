@@ -434,4 +434,29 @@ class SchemaDiscoveryServiceTests {
             statement.execute("create table axb (id bigint primary key, beta varchar(20))");
         }
     }
+
+    @Test
+    void testDisplayTypeWithLength() {
+        // Unbounded by size
+        assertThat(SchemaDiscoveryService.getDisplayTypeWithLength("varchar", 0, 0, java.sql.Types.VARCHAR)).isEqualTo("varchar");
+        assertThat(SchemaDiscoveryService.getDisplayTypeWithLength("varchar", -1, 0, java.sql.Types.VARCHAR)).isEqualTo("varchar");
+        assertThat(SchemaDiscoveryService.getDisplayTypeWithLength("varchar", Integer.MAX_VALUE, 0, java.sql.Types.VARCHAR)).isEqualTo("varchar");
+
+        // Unbounded by type
+        assertThat(SchemaDiscoveryService.getDisplayTypeWithLength("text", 2147483647, 0, java.sql.Types.VARCHAR)).isEqualTo("text");
+        assertThat(SchemaDiscoveryService.getDisplayTypeWithLength("clob", 80, 0, java.sql.Types.CLOB)).isEqualTo("clob");
+        assertThat(SchemaDiscoveryService.getDisplayTypeWithLength("ntext", 80, 0, java.sql.Types.VARCHAR)).isEqualTo("ntext");
+        assertThat(SchemaDiscoveryService.getDisplayTypeWithLength("longtext", 80, 0, java.sql.Types.VARCHAR)).isEqualTo("longtext");
+        assertThat(SchemaDiscoveryService.getDisplayTypeWithLength("mediumtext", 80, 0, java.sql.Types.VARCHAR)).isEqualTo("mediumtext");
+        assertThat(SchemaDiscoveryService.getDisplayTypeWithLength("tinytext", 80, 0, java.sql.Types.VARCHAR)).isEqualTo("tinytext");
+
+        // Bounded
+        assertThat(SchemaDiscoveryService.getDisplayTypeWithLength("varchar", 80, 0, java.sql.Types.VARCHAR)).isEqualTo("varchar(80)");
+        assertThat(SchemaDiscoveryService.getDisplayTypeWithLength("char", 2, 0, java.sql.Types.CHAR)).isEqualTo("char(2)");
+        assertThat(SchemaDiscoveryService.getDisplayTypeWithLength("nvarchar", 255, 0, java.sql.Types.NVARCHAR)).isEqualTo("nvarchar(255)");
+
+        // Decimal
+        assertThat(SchemaDiscoveryService.getDisplayTypeWithLength("numeric", 10, 2, java.sql.Types.NUMERIC)).isEqualTo("numeric(10,2)");
+        assertThat(SchemaDiscoveryService.getDisplayTypeWithLength("decimal", 12, 0, java.sql.Types.DECIMAL)).isEqualTo("decimal(12,0)");
+    }
 }

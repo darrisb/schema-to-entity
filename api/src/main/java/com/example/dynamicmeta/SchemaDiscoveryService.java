@@ -478,6 +478,13 @@ public class SchemaDiscoveryService {
         int size = rs.getInt("COLUMN_SIZE");
         int scale = rs.getInt("DECIMAL_DIGITS");
         int jdbcType = rs.getInt("DATA_TYPE");
+        return getDisplayTypeWithLength(type, size, scale, jdbcType);
+    }
+
+    static String getDisplayTypeWithLength(String type, int size, int scale, int jdbcType) {
+        if (isUnbounded(type, size)) {
+            return type;
+        }
         if ((jdbcType == Types.CHAR || jdbcType == Types.VARCHAR || jdbcType == Types.NCHAR
                 || jdbcType == Types.NVARCHAR) && size > 0) {
             return type + "(" + size + ")";
@@ -486,6 +493,19 @@ public class SchemaDiscoveryService {
             return type + "(" + size + "," + Math.max(scale, 0) + ")";
         }
         return type;
+    }
+
+    private static boolean isUnbounded(String type, int size) {
+        if (size <= 0 || size >= Integer.MAX_VALUE) {
+            return true;
+        }
+        String lowerType = type.toLowerCase(Locale.ROOT);
+        return lowerType.equals("text") ||
+               lowerType.equals("clob") ||
+               lowerType.equals("ntext") ||
+               lowerType.equals("longtext") ||
+               lowerType.equals("mediumtext") ||
+               lowerType.equals("tinytext");
     }
 
     /**

@@ -70,14 +70,11 @@ deleted consumer from git history.
 
 **Impact:** Cosmetic and confusing in the API response and the UI's raw JSON panel.
 
-**Cause:** `SchemaDiscoveryService.displayType()`
-(`api/src/main/java/com/example/dynamicmeta/SchemaDiscoveryService.java:170`) appends
-`COLUMN_SIZE` for any column the driver reports as `VARCHAR`. Postgres reports `text`
-columns that way, with a size of 2^31-1.
+**Cause:** `SchemaDiscoveryService.displayType()` appends `COLUMN_SIZE` for any column the driver reports as `VARCHAR`. Postgres reports `text` columns that way, with a size of 2^31-1.
 
-**Not a mapping defect:** the transformer discards the bogus length, and metadata
-generated from the live schema is byte-identical to metadata generated from the sample
-schema. Offered to suppress the length for unbounded types; not done.
+**Not a mapping defect:** the transformer discards the bogus length, and metadata generated from the live schema is byte-identical to metadata generated from the sample schema.
+
+**Status:** Fixed.
 
 ### 5. `db/init/*.sql` only runs on an empty Postgres data directory
 
