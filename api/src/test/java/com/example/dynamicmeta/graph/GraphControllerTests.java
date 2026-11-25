@@ -77,6 +77,7 @@ class GraphControllerTests {
     Path tempDir;
 
     private SourceRegistry registry;
+    private OverlayStore overlayStore;
     private MockMvc mockMvc;
 
     @BeforeEach
@@ -269,16 +270,27 @@ class GraphControllerTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(manualId));
 
-        // A manual relationship is in the document, so a decision names it.
+        // A manual relationship is in the document, so a decision names it
+        // and is stored. What a decision cannot change is the document's
+        // status: a manual relationship is its own confirmation. So the
+        // saved decision shows in the overlay, and the document shows the
+        // decision matched by keeping the id out of the orphans.
         decide(manualId, "confirmed");
+
+        assertThat(overlayStore.overlay().relationshipDecisions())
+                .containsEntry(manualId, "confirmed");
 
         mockMvc.perform(get("/api/graph"))
                 .andExpect(jsonPath(
                         "$.relationships[?(@.id == '" + manualId + "')].status")
-                        .value(hasItem("confirmed")));
+                        .value(hasItem("confirmed")))
+                .andExpect(jsonPath("$.orphans.length()").value(0));
 
         // The decision can be cleared again.
         decide(manualId, null);
+
+        assertThat(overlayStore.overlay().relationshipDecisions())
+                .doesNotContainKey(manualId);
 
         mockMvc.perform(get("/api/graph"))
                 .andExpect(jsonPath(
@@ -406,10 +418,10 @@ class GraphControllerTests {
                 new SchemaDiscoveryService(null, properties, POLICY, FACTORY);
         SchemaCache cache = new SchemaCache(registry, discovery, properties);
         SchemaGraphBuilder builder = new SchemaGraphBuilder(registry, cache);
-        OverlayStore store =
-                new OverlayStore(tempDir.resolve("graph-overlay.json"));
+        overlayStore = new OverlayStore(tempDir.resolve("graph-overlay.json"));
 
-        return MockMvcBuilders.standaloneSetup(new GraphController(builder, store)).build();
+        return MockMvcBuilders.standaloneSetup(
+                new GraphController(builder, overlayStore)).build();
     }
 
     private static SourceProperties source(String url) {
