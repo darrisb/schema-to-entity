@@ -1,0 +1,472 @@
+[[1;34mINFO[m] Scanning for projects...
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m----------< [0;36mcom.example:schema-to-entity-spring-boot-starter[0;1m >----------[m
+[[1;34mINFO[m] [1mBuilding schema-to-entity-spring-boot-starter 1.0.0[m
+[[1;34mINFO[m] [1m--------------------------------[ jar ]---------------------------------[m
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-dependency-plugin:3.8.1:properties[m [1m(properties)[m @ [36mschema-to-entity-spring-boot-starter[0;1m ---[m
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-resources-plugin:3.3.1:resources[m [1m(default-resources)[m @ [36mschema-to-entity-spring-boot-starter[0;1m ---[m
+[[1;34mINFO[m] Copying 0 resource from src/main/resources to target/classes
+[[1;34mINFO[m] Copying 2 resources from src/main/resources to target/classes
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-compiler-plugin:3.14.1:compile[m [1m(default-compile)[m @ [36mschema-to-entity-spring-boot-starter[0;1m ---[m
+[[1;34mINFO[m] Nothing to compile - all classes are up to date.
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-resources-plugin:3.3.1:testResources[m [1m(default-testResources)[m @ [36mschema-to-entity-spring-boot-starter[0;1m ---[m
+[[1;34mINFO[m] skip non existing resourceDirectory /home/darris/Documents/test-apps/schema-to-entity/api/src/test/resources
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-compiler-plugin:3.14.1:testCompile[m [1m(default-testCompile)[m @ [36mschema-to-entity-spring-boot-starter[0;1m ---[m
+[[1;34mINFO[m] Nothing to compile - all classes are up to date.
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-surefire-plugin:3.5.6:test[m [1m(default-test)[m @ [36mschema-to-entity-spring-boot-starter[0;1m ---[m
+[[1;34mINFO[m] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[[1;34mINFO[m] 
+[[1;34mINFO[m] -------------------------------------------------------
+[[1;34mINFO[m]  T E S T S
+[[1;34mINFO[m] -------------------------------------------------------
+[[1;34mINFO[m] Running com.example.dynamicmeta.[1mExplicitConnectionsDefaultTests[m
+00:46:09.828 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+00:46:09.830 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+00:46:09.835 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 4 ms
+00:46:10.063 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+00:46:10.064 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+00:46:10.064 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+[[1;34mINFO[m] [1;32mTests run: [0;1;32m2[m, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.146 s -- in com.example.dynamicmeta.[1mExplicitConnectionsDefaultTests[m
+[[1;34mINFO[m] Running com.example.dynamicmeta.graph.[1mGraphIdsTests[m
+[[1;34mINFO[m] [1;32mTests run: [0;1;32m9[m, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.028 s -- in com.example.dynamicmeta.graph.[1mGraphIdsTests[m
+[[1;34mINFO[m] Running com.example.dynamicmeta.graph.[1mGraphControllerTests[m
+00:46:10.300 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+00:46:10.301 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+00:46:10.301 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+00:46:10.310 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-billing - Starting...
+00:46:10.318 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-billing - Start completed.
+00:46:10.339 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-sales - Starting...
+00:46:10.340 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-sales - Start completed.
+00:46:10.388 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-sales - Shutdown initiated...
+00:46:10.390 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-sales - Shutdown completed.
+00:46:10.391 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-billing - Shutdown initiated...
+00:46:10.391 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-billing - Shutdown completed.
+00:46:10.410 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+00:46:10.410 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+00:46:10.411 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 1 ms
+00:46:10.414 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-billing - Starting...
+00:46:10.415 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-billing - Start completed.
+00:46:10.417 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-sales - Starting...
+00:46:10.417 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-sales - Start completed.
+00:46:10.466 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-sales - Shutdown initiated...
+00:46:10.466 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-sales - Shutdown completed.
+00:46:10.467 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-billing - Shutdown initiated...
+00:46:10.467 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-billing - Shutdown completed.
+00:46:10.482 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+00:46:10.482 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+00:46:10.482 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+00:46:10.484 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-sales - Starting...
+00:46:10.485 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-sales - Start completed.
+00:46:10.499 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-sales - Shutdown initiated...
+00:46:10.517 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-sales - Shutdown completed.
+00:46:10.540 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+00:46:10.540 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+00:46:10.540 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+00:46:10.697 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+00:46:10.697 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+00:46:10.699 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 2 ms
+00:46:10.702 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-billing - Starting...
+00:46:10.702 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-billing - Start completed.
+00:46:10.704 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-sales - Starting...
+00:46:10.704 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-sales - Start completed.
+00:46:10.721 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-sales - Shutdown initiated...
+00:46:10.735 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-sales - Shutdown completed.
+00:46:10.736 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-billing - Shutdown initiated...
+00:46:10.736 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-billing - Shutdown completed.
+00:46:10.751 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+00:46:10.751 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+00:46:10.751 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+00:46:10.920 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+00:46:10.920 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+00:46:10.921 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+00:46:10.923 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-billing - Starting...
+00:46:10.923 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-billing - Start completed.
+00:46:10.925 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-sales - Starting...
+00:46:10.925 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-sales - Start completed.
+00:46:10.936 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-sales - Shutdown initiated...
+00:46:10.957 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-sales - Shutdown completed.
+00:46:10.957 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-billing - Shutdown initiated...
+00:46:10.958 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-billing - Shutdown completed.
+00:46:10.971 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+00:46:10.971 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+00:46:10.971 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+00:46:10.973 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-billing - Starting...
+00:46:10.974 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-billing - Start completed.
+00:46:10.976 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-sales - Starting...
+00:46:10.976 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-sales - Start completed.
+00:46:10.999 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-sales - Shutdown initiated...
+00:46:11.008 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-sales - Shutdown completed.
+00:46:11.008 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-billing - Shutdown initiated...
+00:46:11.008 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-billing - Shutdown completed.
+00:46:11.017 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+00:46:11.017 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+00:46:11.017 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+00:46:11.019 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-billing - Starting...
+00:46:11.019 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-billing - Start completed.
+00:46:11.021 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-sales - Starting...
+00:46:11.022 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-sales - Start completed.
+00:46:11.049 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-sales - Shutdown initiated...
+00:46:11.053 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-sales - Shutdown completed.
+00:46:11.053 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-billing - Shutdown initiated...
+00:46:11.054 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-billing - Shutdown completed.
+00:46:11.063 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+00:46:11.063 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+00:46:11.063 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+00:46:11.065 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-billing - Starting...
+00:46:11.065 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-billing - Start completed.
+00:46:11.071 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-sales - Starting...
+00:46:11.072 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-sales - Start completed.
+00:46:11.079 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-sales - Shutdown initiated...
+00:46:11.103 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-sales - Shutdown completed.
+00:46:11.103 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-billing - Shutdown initiated...
+00:46:11.104 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-billing - Shutdown completed.
+00:46:11.116 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+00:46:11.117 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+00:46:11.117 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+00:46:11.118 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-billing - Starting...
+00:46:11.118 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-billing - Start completed.
+00:46:11.120 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-sales - Starting...
+00:46:11.121 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-sales - Start completed.
+00:46:11.132 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-sales - Shutdown initiated...
+00:46:11.153 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-sales - Shutdown completed.
+00:46:11.153 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-billing - Shutdown initiated...
+00:46:11.154 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-billing - Shutdown completed.
+00:46:11.168 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+00:46:11.169 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+00:46:11.169 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+[[1;34mINFO[m] [1;32mTests run: [0;1;32m11[m, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.947 s -- in com.example.dynamicmeta.graph.[1mGraphControllerTests[m
+[[1;34mINFO[m] Running com.example.dynamicmeta.graph.[1mOverlayStoreTests[m
+[[1;34mINFO[m] [1;32mTests run: [0;1;32m15[m, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.095 s -- in com.example.dynamicmeta.graph.[1mOverlayStoreTests[m
+[[1;34mINFO[m] Running com.example.dynamicmeta.graph.[1mCrossSourceInferenceTests[m
+[[1;34mINFO[m] [1;32mTests run: [0;1;32m9[m, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.014 s -- in com.example.dynamicmeta.graph.[1mCrossSourceInferenceTests[m
+[[1;34mINFO[m] Running com.example.dynamicmeta.graph.[1mOverlayApplierTests[m
+[[1;34mINFO[m] [1;32mTests run: [0;1;32m8[m, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.022 s -- in com.example.dynamicmeta.graph.[1mOverlayApplierTests[m
+[[1;34mINFO[m] Running com.example.dynamicmeta.graph.[1mSchemaGraphBuilderTests[m
+00:46:11.645 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-shop - Starting...
+00:46:11.646 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-shop - Start completed.
+00:46:11.669 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-shop - Shutdown initiated...
+00:46:11.677 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-shop - Shutdown completed.
+00:46:11.687 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-alpha - Starting...
+00:46:11.687 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-alpha - Start completed.
+00:46:11.689 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-beta - Starting...
+00:46:11.690 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-beta - Start completed.
+00:46:11.693 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-alpha - Shutdown initiated...
+00:46:11.719 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-alpha - Shutdown completed.
+00:46:11.719 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-beta - Shutdown initiated...
+00:46:11.721 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-beta - Shutdown completed.
+00:46:11.800 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-crm - Starting...
+00:46:11.801 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-crm - Start completed.
+00:46:11.804 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-shop - Starting...
+00:46:11.804 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-shop - Start completed.
+00:46:11.807 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-shop - Shutdown initiated...
+00:46:11.837 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-shop - Shutdown completed.
+00:46:11.837 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-crm - Shutdown initiated...
+00:46:11.838 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-crm - Shutdown completed.
+00:46:11.854 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-two - Starting...
+00:46:11.855 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-two - Start completed.
+00:46:11.860 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-two - Shutdown initiated...
+00:46:11.887 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-two - Shutdown completed.
+00:46:11.900 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-crm - Starting...
+00:46:11.901 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-crm - Start completed.
+00:46:11.904 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-shop - Starting...
+00:46:11.904 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-shop - Start completed.
+00:46:11.907 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-shop - Shutdown initiated...
+00:46:11.936 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-shop - Shutdown completed.
+00:46:11.936 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-crm - Shutdown initiated...
+00:46:11.937 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-crm - Shutdown completed.
+00:46:11.946 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-alive - Starting...
+00:46:11.947 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-alive - Start completed.
+00:46:11.951 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-broken - Starting...
+00:46:11.951 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-broken - Start completed.
+00:46:12.466 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-broken - Shutdown initiated...
+00:46:12.589 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-broken - Shutdown completed.
+00:46:12.589 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-alive - Shutdown initiated...
+00:46:12.590 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-alive - Shutdown completed.
+00:46:12.604 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-shop - Starting...
+00:46:12.605 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-shop - Start completed.
+00:46:12.608 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-shop - Shutdown initiated...
+00:46:12.637 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-shop - Shutdown completed.
+00:46:12.652 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-solo - Starting...
+00:46:12.653 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-solo - Start completed.
+00:46:12.657 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-solo - Shutdown initiated...
+00:46:12.685 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-solo - Shutdown completed.
+[[1;34mINFO[m] [1;32mTests run: [0;1;32m9[m, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.378 s -- in com.example.dynamicmeta.graph.[1mSchemaGraphBuilderTests[m
+[[1;34mINFO[m] Running com.example.dynamicmeta.data.[1mSourceRegistryTests[m
+00:46:12.712 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Starting...
+00:46:12.713 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Start completed.
+00:46:12.716 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Shutdown initiated...
+00:46:12.745 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Shutdown completed.
+00:46:12.752 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Starting...
+00:46:12.761 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Start completed.
+00:46:13.012 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Shutdown initiated...
+00:46:13.103 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Shutdown completed.
+[[1;34mINFO[m] [1;32mTests run: [0;1;32m5[m, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.412 s -- in com.example.dynamicmeta.data.[1mSourceRegistryTests[m
+[[1;34mINFO[m] Running com.example.dynamicmeta.data.[1mDataSourceDefinitionsTests[m
+[[1;34mINFO[m] [1;32mTests run: [0;1;32m15[m, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.085 s -- in com.example.dynamicmeta.data.[1mDataSourceDefinitionsTests[m
+[[1;34mINFO[m] Running com.example.dynamicmeta.data.[1mDataControllerErrorTests[m
+00:46:13.197 [main] WARN com.example.dynamicmeta.data.DataController -- Data query failed: ERROR: relation "internal_payroll" does not exist at character 15
+00:46:13.199 [main] WARN com.example.dynamicmeta.data.DataController -- Data query timed out: ERROR: relation "internal_payroll" does not exist at character 15
+00:46:13.200 [main] WARN com.example.dynamicmeta.data.DataController -- No pooled connection available: ERROR: relation "internal_payroll" does not exist at character 15
+00:46:13.202 [main] WARN com.example.dynamicmeta.data.DataController -- Data source connection failed: ERROR: relation "internal_payroll" does not exist at character 15
+[[1;34mINFO[m] [1;32mTests run: [0;1;32m4[m, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.006 s -- in com.example.dynamicmeta.data.[1mDataControllerErrorTests[m
+[[1;34mINFO[m] Running com.example.dynamicmeta.data.[1mDataControllerTests[m
+00:46:13.219 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+00:46:13.219 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+00:46:13.219 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+00:46:13.225 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Starting...
+00:46:13.226 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Start completed.
+00:46:13.249 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Shutdown initiated...
+00:46:13.257 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Shutdown completed.
+00:46:13.268 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+00:46:13.268 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+00:46:13.268 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+00:46:13.270 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Starting...
+00:46:13.271 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Start completed.
+00:46:13.277 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Shutdown initiated...
+00:46:13.302 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Shutdown completed.
+00:46:13.317 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+00:46:13.317 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+00:46:13.317 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+00:46:13.319 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Starting...
+00:46:13.320 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Start completed.
+00:46:13.328 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Shutdown initiated...
+00:46:13.351 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Shutdown completed.
+00:46:13.366 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+00:46:13.366 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+00:46:13.366 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+00:46:13.368 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Starting...
+00:46:13.368 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Start completed.
+00:46:13.377 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Shutdown initiated...
+00:46:13.400 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Shutdown completed.
+00:46:13.415 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+00:46:13.415 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+00:46:13.415 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+00:46:13.417 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Starting...
+00:46:13.417 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Start completed.
+00:46:13.422 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Shutdown initiated...
+00:46:13.449 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Shutdown completed.
+00:46:13.464 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+00:46:13.464 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+00:46:13.465 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 1 ms
+00:46:13.466 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Starting...
+00:46:13.467 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Start completed.
+00:46:13.471 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Shutdown initiated...
+00:46:13.499 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Shutdown completed.
+00:46:13.517 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+00:46:13.517 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+00:46:13.517 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+00:46:13.519 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Starting...
+00:46:13.520 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Start completed.
+00:46:13.535 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Shutdown initiated...
+00:46:13.552 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Shutdown completed.
+00:46:13.570 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+00:46:13.570 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+00:46:13.570 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+00:46:13.573 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Starting...
+00:46:13.573 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Start completed.
+00:46:13.581 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Shutdown initiated...
+00:46:13.605 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Shutdown completed.
+00:46:13.624 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+00:46:13.625 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+00:46:13.625 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+00:46:13.627 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Starting...
+00:46:13.628 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Start completed.
+00:46:13.638 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Shutdown initiated...
+00:46:13.660 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Shutdown completed.
+00:46:13.670 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+00:46:13.670 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+00:46:13.671 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 1 ms
+00:46:13.672 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Starting...
+00:46:13.672 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Start completed.
+00:46:13.677 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Shutdown initiated...
+00:46:13.704 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Shutdown completed.
+00:46:13.715 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+00:46:13.715 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+00:46:13.715 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+00:46:13.728 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+00:46:13.728 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+00:46:13.728 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+00:46:13.731 [main] WARN org.springframework.web.servlet.mvc.support.DefaultHandlerExceptionResolver -- Resolved [org.springframework.web.HttpRequestMethodNotSupportedException: Request method 'POST' is not supported]
+00:46:13.741 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+00:46:13.741 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+00:46:13.741 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+00:46:13.742 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Starting...
+00:46:13.743 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Start completed.
+00:46:13.748 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Shutdown initiated...
+00:46:13.775 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Shutdown completed.
+00:46:13.784 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+00:46:13.785 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+00:46:13.785 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+00:46:13.786 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Starting...
+00:46:13.787 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Start completed.
+00:46:13.792 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Shutdown initiated...
+00:46:13.818 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Shutdown completed.
+00:46:13.828 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+00:46:13.828 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+00:46:13.828 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+00:46:13.830 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Starting...
+00:46:13.830 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Start completed.
+00:46:13.842 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Shutdown initiated...
+00:46:13.861 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Shutdown completed.
+00:46:13.870 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+00:46:13.871 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+00:46:13.871 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+00:46:13.937 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+00:46:13.938 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+00:46:13.938 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+00:46:13.939 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Starting...
+00:46:13.939 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Start completed.
+00:46:13.944 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Shutdown initiated...
+00:46:13.971 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Shutdown completed.
+00:46:13.982 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+00:46:13.982 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+00:46:13.983 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 1 ms
+00:46:13.985 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Starting...
+00:46:13.986 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Start completed.
+00:46:13.995 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Shutdown initiated...
+00:46:14.017 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Shutdown completed.
+00:46:14.030 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+00:46:14.030 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+00:46:14.030 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+00:46:14.032 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Starting...
+00:46:14.033 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Start completed.
+00:46:14.038 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Shutdown initiated...
+00:46:14.064 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Shutdown completed.
+00:46:14.077 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+00:46:14.077 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+00:46:14.078 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 1 ms
+00:46:14.079 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Starting...
+00:46:14.080 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Start completed.
+00:46:14.086 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Shutdown initiated...
+00:46:14.111 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Shutdown completed.
+00:46:14.125 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+00:46:14.125 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+00:46:14.125 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+00:46:14.126 [main] WARN com.example.dynamicmeta.data.DataController -- Data query timed out: slow
+00:46:14.126 [main] WARN com.example.dynamicmeta.data.DataController -- No pooled connection available: pool exhausted
+00:46:14.126 [main] WARN com.example.dynamicmeta.data.DataController -- Data query failed: database failed
+00:46:14.127 [main] WARN com.example.dynamicmeta.data.DataController -- Data query failed: connect to postgres://user:***@host/db
+00:46:14.138 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+00:46:14.138 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+00:46:14.138 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+00:46:14.140 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Starting...
+00:46:14.140 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Start completed.
+00:46:14.147 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Shutdown initiated...
+00:46:14.171 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Shutdown completed.
+00:46:14.178 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+00:46:14.178 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+00:46:14.178 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+00:46:14.179 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Starting...
+00:46:14.180 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Start completed.
+00:46:14.185 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Shutdown initiated...
+00:46:14.212 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Shutdown completed.
+[[1;34mINFO[m] [1;32mTests run: [0;1;32m23[m, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.009 s -- in com.example.dynamicmeta.data.[1mDataControllerTests[m
+[[1;34mINFO[m] Running com.example.dynamicmeta.data.[1mDataApiDocsTests[m
+[[1;34mINFO[m] [1;32mTests run: [0;1;32m6[m, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.034 s -- in com.example.dynamicmeta.data.[1mDataApiDocsTests[m
+[[1;34mINFO[m] Running com.example.dynamicmeta.data.[1mSchemaCacheTests[m
+00:46:14.255 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Starting...
+00:46:14.255 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Start completed.
+00:46:14.259 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Shutdown initiated...
+00:46:14.287 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Shutdown completed.
+00:46:14.294 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Starting...
+00:46:14.295 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Start completed.
+00:46:14.297 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Shutdown initiated...
+00:46:14.326 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Shutdown completed.
+00:46:14.423 [pool-2-thread-1] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Starting...
+00:46:14.431 [pool-2-thread-1] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Start completed.
+00:46:14.737 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Shutdown initiated...
+00:46:14.738 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Shutdown completed.
+00:46:14.806 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Starting...
+00:46:14.806 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Start completed.
+00:46:14.809 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Shutdown initiated...
+00:46:14.838 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Shutdown completed.
+00:46:14.842 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Starting...
+00:46:14.843 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Start completed.
+00:46:14.849 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Shutdown initiated...
+00:46:14.875 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Shutdown completed.
+00:46:14.883 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Starting...
+00:46:14.883 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Start completed.
+00:46:14.889 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Shutdown initiated...
+00:46:14.915 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Shutdown completed.
+00:46:14.922 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Starting...
+00:46:14.923 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Start completed.
+00:46:14.936 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Starting...
+00:46:14.937 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Start completed.
+00:46:14.944 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Starting...
+00:46:14.945 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Start completed.
+00:46:14.947 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Shutdown initiated...
+00:46:14.976 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Shutdown completed.
+00:46:14.979 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Starting...
+00:46:14.980 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Start completed.
+00:46:14.981 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Shutdown initiated...
+00:46:15.011 [main] INFO com.zaxxer.hikari.HikariDataSource -- ste-orders - Shutdown completed.
+[[1;34mINFO[m] [1;32mTests run: [0;1;32m14[m, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.761 s -- in com.example.dynamicmeta.data.[1mSchemaCacheTests[m
+[[1;34mINFO[m] Running com.example.dynamicmeta.data.[1mQueryParameterParserTests[m
+[[1;34mINFO[m] [1;32mTests run: [0;1;32m26[m, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.022 s -- in com.example.dynamicmeta.data.[1mQueryParameterParserTests[m
+[[1;34mINFO[m] Running com.example.dynamicmeta.data.[1mDataValueConversionTests[m
+[[1;34mINFO[m] [1;32mTests run: [0;1;32m3[m, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in com.example.dynamicmeta.data.[1mDataValueConversionTests[m
+[[1;34mINFO[m] Running com.example.dynamicmeta.data.[1mSelectBuilderTests[m
+[[1;34mINFO[m] [1;32mTests run: [0;1;32m21[m, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.013 s -- in com.example.dynamicmeta.data.[1mSelectBuilderTests[m
+[[1;34mINFO[m] Running com.example.dynamicmeta.data.[1mDataCorsTests[m
+00:46:15.129 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+00:46:15.130 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+00:46:15.130 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+00:46:15.278 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+00:46:15.278 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+00:46:15.278 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+00:46:15.328 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+00:46:15.329 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+00:46:15.329 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+00:46:15.369 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+00:46:15.369 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+00:46:15.369 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+00:46:15.412 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+00:46:15.412 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+00:46:15.412 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+[[1;34mINFO[m] [1;32mTests run: [0;1;32m6[m, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.361 s -- in com.example.dynamicmeta.data.[1mDataCorsTests[m
+[[1;34mINFO[m] Running com.example.dynamicmeta.[1mSchemaDiscoveryControllerErrorTests[m
+00:46:15.442 [main] INFO org.springframework.mock.web.MockServletContext -- Initializing Spring TestDispatcherServlet ''
+00:46:15.442 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Initializing Servlet ''
+00:46:15.442 [main] INFO org.springframework.test.web.servlet.TestDispatcherServlet -- Completed initialization in 0 ms
+[[1;34mINFO[m] [1;32mTests run: [0;1;32m12[m, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.035 s -- in com.example.dynamicmeta.[1mSchemaDiscoveryControllerErrorTests[m
+[[1;34mINFO[m] Running com.example.dynamicmeta.[1mDriverValidationTests[m
+[[1;34mINFO[m] [1;32mTests run: [0;1;32m3[m, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in com.example.dynamicmeta.[1mDriverValidationTests[m
+[[1;34mINFO[m] Running com.example.dynamicmeta.connection.[1mViewDependencyReaderTests[m
+[[1;34mINFO[m] [1;32mTests run: [0;1;32m6[m, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.473 s -- in com.example.dynamicmeta.connection.[1mViewDependencyReaderTests[m
+[[1;34mINFO[m] Running com.example.dynamicmeta.connection.[1mConnectionBypassRegressionTests[m
+[[1;34mINFO[m] [1;32mTests run: [0;1;32m2[m, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.036 s -- in com.example.dynamicmeta.connection.[1mConnectionBypassRegressionTests[m
+[[1;34mINFO[m] Running com.example.dynamicmeta.connection.[1mSecretRedactorTests[m
+[[1;34mINFO[m] [1;32mTests run: [0;1;32m29[m, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.030 s -- in com.example.dynamicmeta.connection.[1mSecretRedactorTests[m
+[[1;34mINFO[m] Running com.example.dynamicmeta.connection.[1mNamespaceResolverTests[m
+[[1;34mINFO[m] [1;32mTests run: [0;1;32m24[m, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.122 s -- in com.example.dynamicmeta.connection.[1mNamespaceResolverTests[m
+[[1;34mINFO[m] Running com.example.dynamicmeta.connection.[1mConnectionStringParserTests[m
+[[1;34mINFO[m] [1;32mTests run: [0;1;32m105[m, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.092 s -- in com.example.dynamicmeta.connection.[1mConnectionStringParserTests[m
+[[1;34mINFO[m] Running com.example.dynamicmeta.connection.[1mConnectionPolicyTests[m
+[[1;34mINFO[m] [1;32mTests run: [0;1;32m39[m, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.115 s -- in com.example.dynamicmeta.connection.[1mConnectionPolicyTests[m
+[[1;34mINFO[m] Running com.example.dynamicmeta.connection.[1mJdbcConnectionFactoryTests[m
+[[1;34mINFO[m] [1;32mTests run: [0;1;32m25[m, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.021 s -- in com.example.dynamicmeta.connection.[1mJdbcConnectionFactoryTests[m
+[[1;34mINFO[m] Running com.example.dynamicmeta.[1mExplicitConnectionLimitTests[m
+[[1;34mINFO[m] [1;32mTests run: [0;1;32m2[m, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 2.035 s -- in com.example.dynamicmeta.[1mExplicitConnectionLimitTests[m
+[[1;34mINFO[m] Running com.example.dynamicmeta.[1mSourceRegistryAutoConfigurationTests[m
+[[1;34mINFO[m] [1;32mTests run: [0;1;32m3[m, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.059 s -- in com.example.dynamicmeta.[1mSourceRegistryAutoConfigurationTests[m
+[[1;34mINFO[m] Running com.example.dynamicmeta.[1mTestConnectionEndpointTests[m
+[[1;34mINFO[m] [1;32mTests run: [0;1;32m4[m, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.056 s -- in com.example.dynamicmeta.[1mTestConnectionEndpointTests[m
+[[1;34mINFO[m] Running com.example.dynamicmeta.[1mSchemaDiscoveryServiceTests[m
+[[1;34mINFO[m] [1;32mTests run: [0;1;32m15[m, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.093 s -- in com.example.dynamicmeta.[1mSchemaDiscoveryServiceTests[m
+[[1;34mINFO[m] 
+[[1;34mINFO[m] Results:
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1;32mTests run: 455, Failures: 0, Errors: 0, Skipped: 0[m
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[[1;34mINFO[m] [1;32mBUILD SUCCESS[m
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[[1;34mINFO[m] Total time:  11.467 s
+[[1;34mINFO[m] Finished at: 2026-11-25T00:46:18-05:00
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
