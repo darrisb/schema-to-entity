@@ -23,7 +23,7 @@ import java.util.Objects;
  * @param label       optional display label, possibly null
  * @param description optional description, possibly null
  * @param keyColumns  key columns in key order, possibly empty
- * @param columns     discovered columns in metadata order
+ * @param columns     discovered columns sorted by id
  * @param baseTables  base tables of a view, possibly empty
  */
 public record GraphEntity(String id, String source, String name, String kind, String label,
