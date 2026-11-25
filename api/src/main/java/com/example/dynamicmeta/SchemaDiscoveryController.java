@@ -26,12 +26,10 @@ import java.util.Map;
 public class SchemaDiscoveryController {
 
     private final SchemaDiscoveryService discoveryService;
-    private final SpringMetadataTransformer metadataTransformer;
 
     public SchemaDiscoveryController(
-            SchemaDiscoveryService discoveryService, SpringMetadataTransformer metadataTransformer) {
+            SchemaDiscoveryService discoveryService) {
         this.discoveryService = discoveryService;
-        this.metadataTransformer = metadataTransformer;
     }
 
     @GetMapping({"", "/datasource"})
@@ -56,15 +54,6 @@ public class SchemaDiscoveryController {
     public Map<String, Object> testConnection(
             @RequestBody SchemaDiscoveryService.ConnectionRequest request) throws SQLException {
         return discoveryService.testConnection(request);
-    }
-
-    @PostMapping("/to-spring-metadata")
-    public Map<String, Object> toSpringMetadata(@RequestBody MetadataRequest request) {
-        if (request == null || request.schema() == null) {
-            throw new IllegalArgumentException("A schema is required");
-        }
-        return metadataTransformer.transform(request.schema(),
-                request.options() == null ? null : request.options().entityNamePrefix());
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
@@ -106,10 +95,5 @@ public class SchemaDiscoveryController {
     public ResponseEntity<Map<String, String>> connectionFailure(SQLException exception) {
         return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
                 .body(Map.of("error", SecretRedactor.redact(exception.getMessage())));
-    }
-
-    public record MetadataRequest(Map<String, Object> schema, Options options) {
-        public record Options(String entityNamePrefix) {
-        }
     }
 }

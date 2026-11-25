@@ -35,10 +35,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 class SchemaDiscoveryControllerErrorTests {
 
-    private static SpringMetadataTransformer transformer() {
-        return new SpringMetadataTransformer();
-    }
-
     private static SchemaDiscoveryService service() {
         SchemaToEntityProperties properties = new SchemaToEntityProperties();
         properties.setExplicitConnectionsEnabled(true);
@@ -64,7 +60,7 @@ class SchemaDiscoveryControllerErrorTests {
     @Test
     void connectionRejectedExceptionReturns403() {
         SchemaDiscoveryController controller = new SchemaDiscoveryController(
-                service(), transformer());
+                service());
 
         ResponseEntity<Map<String, String>> response = controller.connectionRejected(
                 new ConnectionRejectedException("Explicit database connections are disabled"));
@@ -76,7 +72,7 @@ class SchemaDiscoveryControllerErrorTests {
     @Test
     void connectionRejectedExceptionRedactsCredentials() {
         SchemaDiscoveryController controller = new SchemaDiscoveryController(
-                service(), transformer());
+                service());
 
         ResponseEntity<Map<String, String>> response = controller.connectionRejected(
                 new ConnectionRejectedException("Refused connection to postgres://admin:s3cret@host/db"));
@@ -109,7 +105,7 @@ class SchemaDiscoveryControllerErrorTests {
     @Test
     void illegalArgumentExceptionReturns400() {
         SchemaDiscoveryController controller = new SchemaDiscoveryController(
-                service(), transformer());
+                service());
 
         ResponseEntity<Map<String, String>> response = controller.badRequest(
                 new IllegalArgumentException("A connectionString is required"));
@@ -123,7 +119,7 @@ class SchemaDiscoveryControllerErrorTests {
     @Test
     void unsupportedDatabaseExceptionReturns422() {
         SchemaDiscoveryController controller = new SchemaDiscoveryController(
-                service(), transformer());
+                service());
 
         ResponseEntity<Map<String, String>> response = controller.unsupportedDatabase(
                 new UnsupportedDatabaseException("Database type 'cassandra' is not supported"));
@@ -137,7 +133,7 @@ class SchemaDiscoveryControllerErrorTests {
     @Test
     void connectionBusyExceptionReturns429() {
         SchemaDiscoveryController controller = new SchemaDiscoveryController(
-                service(), transformer());
+                service());
 
         ResponseEntity<Map<String, String>> response = controller.connectionBusy(
                 new ConnectionBusyException("Too many concurrent connections"));
@@ -163,7 +159,7 @@ class SchemaDiscoveryControllerErrorTests {
         SchemaDiscoveryService service = new SchemaDiscoveryService(
                 stubDataSource(), properties,
                 new ConnectionPolicy(List.of(), true), failingFactory);
-        SchemaDiscoveryController controller = new SchemaDiscoveryController(service, transformer());
+        SchemaDiscoveryController controller = new SchemaDiscoveryController(service);
         MockMvc mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
 
         mockMvc.perform(post("/api/schema/extract")
@@ -179,7 +175,7 @@ class SchemaDiscoveryControllerErrorTests {
     @Test
     void sqlTimeoutExceptionReturns504() {
         SchemaDiscoveryController controller = new SchemaDiscoveryController(
-                service(), transformer());
+                service());
 
         ResponseEntity<Map<String, String>> response = controller.connectionTimeout(
                 new SQLTimeoutException("Operation timed out after 30 seconds"));
@@ -193,7 +189,7 @@ class SchemaDiscoveryControllerErrorTests {
     @Test
     void sqlExceptionReturns502() {
         SchemaDiscoveryController controller = new SchemaDiscoveryController(
-                service(), transformer());
+                service());
 
         ResponseEntity<Map<String, String>> response = controller.connectionFailure(
                 new SQLTransientConnectionException("Connection refused"));
@@ -207,7 +203,7 @@ class SchemaDiscoveryControllerErrorTests {
     @Test
     void sqlExceptionRedactsCredentials() {
         SchemaDiscoveryController controller = new SchemaDiscoveryController(
-                service(), transformer());
+                service());
 
         ResponseEntity<Map<String, String>> response = controller.connectionFailure(
                 new SQLTransientConnectionException("Failed to connect to postgres://user:pass123@host/db"));
