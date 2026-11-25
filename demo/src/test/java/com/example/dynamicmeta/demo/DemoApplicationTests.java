@@ -14,11 +14,12 @@ import org.springframework.boot.test.context.SpringBootTest;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * DA-008: the demo application starts with the read-only data API enabled and
- * the {@code demo} source configured against the bundled Postgres.
- * <p>
- * The source is validated at startup but connects lazily, so this context test
- * does not require Postgres to be running.
+ * DA-008/GR-008: the demo application starts with the read-only data API
+ * enabled and two sources configured against the bundled Postgres — the
+ * {@code demo} tables in schema {@code public} and the {@code billing}
+ * schema — so the combined schema document has cross-source proposals to
+ * show. The sources are validated at startup but connect lazily, so this
+ * context test does not require Postgres to be running.
  */
 @SpringBootTest
 class DemoApplicationTests {
@@ -33,7 +34,18 @@ class DemoApplicationTests {
     void dataApiIsEnabledWithTheDemoSource() {
         assertThat(properties.isDataApiEnabled()).isTrue();
         assertThat(properties.getSources()).containsKey("demo");
-        assertThat(sourceRegistry.names()).containsExactly("demo");
+        assertThat(sourceRegistry.names())
+                .containsExactlyInAnyOrder("demo", "billing");
+    }
+
+    @Test
+    void graphIsEnabledWithAnOverlayFileAndBothSources() {
+        assertThat(properties.isGraphEnabled()).isTrue();
+        assertThat(properties.getOverlayFile()).isNotBlank();
+        assertThat(properties.getSources()).containsKey("billing");
+        assertThat(properties.getSources().get("billing").getSchema())
+                .isEqualTo("billing");
+        assertThat(sourceRegistry.names()).contains("demo", "billing");
     }
 
     @Test

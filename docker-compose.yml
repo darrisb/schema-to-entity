@@ -33,6 +33,13 @@ services:
       DEMO_DB_USERNAME: dynamic_meta_user
       DEMO_DB_PASSWORD: dynamic_meta_password
       DEMO_DB_SCHEMA: public
+      # Second demo source: the billing schema in the same Postgres
+      # (created by db/init/02-billing.sql). Two sources give the graph
+      # document its cross-source proposals.
+      BILLING_DB_URL: jdbc:postgresql://database:5432/dynamic_meta_db
+      BILLING_DB_USERNAME: dynamic_meta_user
+      BILLING_DB_PASSWORD: dynamic_meta_password
+      BILLING_DB_SCHEMA: billing
     ports:
       - "8081:8080"
     networks: [default, orchestrator]

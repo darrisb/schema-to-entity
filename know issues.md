@@ -143,6 +143,48 @@ source is readable by anyone who can reach the API.
 any non-local deployment and give each source a `SELECT`-only database account. See
 the "Database accounts" and "Named data sources" sections of `api/README.md`.
 
+### 9. Security: the graph and overlay endpoints have no authentication
+
+**Impact:** `/api/graph/**` has no authentication or authorization of its own — it is
+unauthenticated like the rest of the admin API (`/api/schema/**`, `/api/data/**`).
+The combined document names every configured source, its entities, columns and
+relationships, and the overlay endpoints accept edits: labels, relationship
+decisions and manual relationships. Any caller that can reach the API can read the
+document and write overlay edits.
+
+**Mitigations in place:**
+
+| Control | Setting / Mechanism | Default |
+|---|---|---|
+| Toggle | `schema-to-entity.graph-enabled` | `false` |
+| Dependency | Graph beans also require `data-api-enabled: true` | `false` |
+| CORS | Graph endpoints receive no CORS mapping — only `/api/data/**` does | always on |
+| Read-only sources | Pools are read-only; nothing in the graph path writes to any source database | always on |
+| Secret redaction | Error responses pass through the secret redactor; an unavailable source reports a generic error, never a driver message | always on |
+| Overlay bounds | Labels ≤ 200 chars, descriptions ≤ 2000, decisions limited to `confirmed`/`rejected` | always on |
+
+**What remains:** No authentication or authorization. Require authentication before
+any non-local deployment, exactly as for `/api/schema/extract` (issue 6) and
+`/api/data/**` (issue 8).
+
+### 10. The overlay is a local file, not shared between instances
+
+**Impact:** Overlay edits (labels, relationship decisions, manual relationships) are
+stored in a single JSON file on the server's local disk,
+`schema-to-entity.overlay-file` (default `./schema-overlay.json`). Run more than one
+instance of the host application and each keeps its own overlay: an edit made
+through one instance does not appear in another, the file is not replicated, and it
+is not backed up beyond the file system it sits on.
+
+**Workaround:** Give instances of one deployment the same mounted volume as the
+overlay path — they will then share the file, though concurrent writers on different
+hosts can still lose an edit, because the store is last-writer-wins per save.
+
+**Status:** Open by design for this stage. A multi-instance deployment that needs
+consistent overlays requires a shared store (a database table or object storage)
+behind `OverlayStore`; the local file is the simplest store that survives
+rediscovery and restarts.
+
 ## Caveats on the above
 
 The repo has no Hibernate dependency. All Hibernate findings (issue 1, and the successful

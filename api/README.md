@@ -140,6 +140,8 @@ schema-to-entity:
 | Property | Default | Description |
 |---|---|---|
 | `schema-to-entity.data-api-enabled` | `false` | Registers the read-only data API and its endpoints. |
+| `schema-to-entity.graph-enabled` | `false` | Builds the combined schema document and registers the `/api/graph/**` endpoints. Requires `data-api-enabled`. See "Combined schema document" below. |
+| `schema-to-entity.overlay-file` | `./schema-overlay.json` | JSON file keeping the graph's overlay edits. See "The overlay file" below. |
 | `schema-to-entity.sources` | `{}` | Named read-only sources, keyed by source name. |
 | `schema-to-entity.max-page-size` | `200` | Largest `limit` a caller may request. |
 | `schema-to-entity.default-page-size` | `50` | Rows returned when the caller omits `limit`. |
@@ -272,6 +274,179 @@ const customersDataSource = {
 ```
 
 Replace `customers` with any entity name returned by `GET /api/data/demo`. The data source receives the same `{ items, total, limit, offset }` envelope shown above, so paging and total counts are available when the library supports them.
+
+## Combined schema document (graph)
+
+The `com.example.dynamicmeta.graph` package builds one JSON document describing **every configured source at once**: the sources, the entities and columns discovered in them, the relationships between them — including links proposed across sources — and the ids a reviewer's edits no longer match. The document is built from the same discovered schemas the data API caches, so the graph needs `data-api-enabled: true` as well.
+
+```yaml
+schema-to-entity:
+  # Off by default: the document names every configured source and the
+  # endpoints accept edits. See the security note at the end of this
+  # section.
+  graph-enabled: true
+  # Where the overlay edits are kept (default: ./schema-overlay.json).
+  overlay-file: ./schema-overlay.json
+```
+
+The demo application ships with `graph-enabled: true` and two sources (`demo` in schema `public`, `billing` in schema `billing`, both in the compose Postgres), so the document shows a declared foreign key inside `demo`, one inside `billing` and a cross-source proposal between them. Note that `db/init/02-billing.sql` only runs on an empty Postgres data directory — see Known Issues #5 (`docker compose down -v` first).
+
+### What the document contains
+
+| Field | Meaning |
+|---|---|
+| `specVersion` | Layout version of the document, currently `1.0`. |
+| `generatedAt` | When the snapshot was taken. |
+| `sources` | Every configured source, with `databaseType`, `catalog`, `schema` and `status` — `ok`, or `unavailable` with a generic `error` (never a driver message) when discovery failed. One unavailable source does not break the document; the rest is still included. |
+| `entities` | Every discovered table, view or materialized view across all sources, each with its `keyColumns`, its `columns` and, for views, its `baseTables`. `label` and `description` carry the overlay's display names and are null without one. |
+| `relationships` | Every relationship across all sources. See the next table. |
+| `orphans` | Overlay ids that no longer match anything — a dropped table, say. They stay in the overlay so a later rediscovery that brings the table back reattaches the edit. |
+
+The document is a snapshot: it describes the sources, and nothing in it writes to any source database. The only file the graph writes is the overlay JSON.
+
+### Ids
+
+Every entity, column and relationship carries a stable, lower-case id so it can be referenced from anywhere in the document and from the overlay file:
+
+| Thing | Id format | Example |
+|---|---|---|
+| Entity | `source:entity` | `demo:users` |
+| Column | `source:entity.column` | `demo:users.id` |
+| Relationship | `fromColumnId->toColumnId` | `demo:posts.author_id->demo:users.id` |
+
+Names are lower-cased with the root locale, so an id is stable no matter how the database reports the casing of its names. Source, entity and column names must not contain `:` or `.` — names reported by JDBC metadata never do; ids are sent in bodies and query parameters, never path segments, because `:` and `->` do not survive path segmentation unambiguously.
+
+### Relationships: origin, scope, status, confidence
+
+| Field | Values | Meaning |
+|---|---|---|
+| `origin` | `declared` | Read from the database's own foreign keys. |
+| | `inferred` | Found by analysis: a view column named like a base table's key within one source, or a `*_id` / `…Id` column whose stem matches another source's entity name. |
+| | `manual` | Asserted by a person through the overlay endpoints. |
+| `scope` | `within-source` | Both ends live in the same source. |
+| | `cross-source` | The ends live in different sources. |
+| `status` | `declared` | The database itself asserts the link; it needs no review and the overlay cannot change it. |
+| | `proposed` | Awaiting review. **Cross-source links are always proposals** — no source's metadata knows another's tables, so a link between two sources can only be proposed by name matching, never discovered the way a foreign key is. |
+| | `confirmed` | A reviewer accepted a proposal. |
+| | `rejected` | A reviewer declined it; hidden from the document unless `includeRejected=true`. |
+| `confidence` | `0.0`–`1.0` or null | How strongly the analysis supports an **inferred** relationship; always null for `declared`. It is a hint for ordering review work, not a probability: a within-source view inference scores `0.9` (evidence `view-column-name`); a cross-source proposal starts at `0.6`, gains `0.2` when the target's key is named `id` or like the column, and is capped at `0.8` (evidence `name-match`, `type-match`, `key-name-match`). Manual relationships have none. |
+| `evidence` | list | The tokens or ids the relationship was derived from. |
+
+**Cross-source links are proposals until confirmed.** Only `declared` and `confirmed` relationships are established facts; a UI should only rely on declared or confirmed relationships and treat `proposed` ones as review suggestions, not as connections it can navigate.
+
+### Example
+
+An abbreviated `GET /api/graph` for the demo's two sources, trimmed to one entity and two relationships (a real response lists every column of every entity of both sources):
+
+```json
+{
+  "specVersion": "1.0",
+  "generatedAt": "2026-11-24T09:15:00Z",
+  "sources": [
+    { "id": "billing", "databaseType": "postgresql", "catalog": null, "schema": "billing", "status": "ok", "error": null },
+    { "id": "demo", "databaseType": "postgresql", "catalog": null, "schema": "public", "status": "ok", "error": null }
+  ],
+  "entities": [
+    {
+      "id": "demo:users", "source": "demo", "name": "users", "kind": "table",
+      "label": null, "description": null, "keyColumns": ["id"],
+      "columns": [
+        { "id": "demo:users.id", "name": "id", "type": "bigserial", "category": "NUMBER", "nullable": false, "label": null, "description": null },
+        { "id": "demo:users.username", "name": "username", "type": "varchar(255)", "category": "TEXT", "nullable": false, "label": null, "description": null }
+      ],
+      "baseTables": []
+    }
+  ],
+  "relationships": [
+    {
+      "id": "billing:invoices.user_id->demo:users.id",
+      "from": "billing:invoices.user_id", "to": "demo:users.id",
+      "origin": "inferred", "scope": "cross-source", "status": "proposed",
+      "confidence": 0.8,
+      "evidence": ["name-match", "type-match", "key-name-match"]
+    },
+    {
+      "id": "demo:posts.author_id->demo:users.id",
+      "from": "demo:posts.author_id", "to": "demo:users.id",
+      "origin": "declared", "scope": "within-source", "status": "declared",
+      "confidence": null, "evidence": []
+    }
+  ],
+  "orphans": []
+}
+```
+
+### The overlay file
+
+Edits a reviewer makes — labels and descriptions for entities and columns, confirm/reject decisions on proposals, manual relationships — are kept **apart from discovery** in one JSON file, `schema-to-entity.overlay-file` (default `./schema-overlay.json`). Keeping them separate is what makes rediscovery safe: the schema can be re-discovered as often as the cache expires without ever wiping what a person decided, and an edit whose table was dropped waits in the overlay (reported as `orphans`) until the table comes back. The file is pretty-printed and written atomically (temporary file, then moved over), and it is the **only** file this starter writes itself; security settings such as hidden columns stay in configuration, never in the overlay. It is a local file path, not a shared store: running more than one instance of the host application gives each instance its own overlay.
+
+### Endpoints
+
+All endpoints live under `/api/graph` and return JSON; errors are always `{"error": "..."}` — an unknown id is `404`, invalid input `400`. Every id travels in a body or a query parameter, never a path segment.
+
+#### `GET /api/graph` — the combined document
+
+```bash
+curl 'http://localhost:8080/api/graph?sources=demo,billing&includeRejected=false'
+```
+
+The built document with the overlay applied, so every read reflects the stored edits. `sources` is a comma-separated list limiting the build; omit it for every configured source. `includeRejected=true` keeps rejected relationships in the response (default `false`).
+
+#### `GET /api/graph/relationships` — just the relationships
+
+```bash
+curl 'http://localhost:8080/api/graph/relationships?status=proposed'
+```
+
+The relationships of the document, optionally filtered by `status=declared|proposed|confirmed|rejected`. Unlike the document, rejected relationships are **listed by default** here, so `status=rejected` can show them; pass `includeRejected=false` to hide them. An unknown status is `400`.
+
+#### `PUT /api/graph/overlay/relationships` — confirm or reject
+
+```bash
+curl -X PUT http://localhost:8080/api/graph/overlay/relationships \
+  -H 'Content-Type: application/json' \
+  -d '{"id": "billing:invoices.user_id->demo:users.id", "status": "confirmed"}'
+```
+
+Confirms or rejects a relationship that is in the document; `"status": null` clears the decision and returns it to `proposed`. Returns `204`. Deciding has no effect on a `declared` relationship — the database asserts those — but the decision is still stored, so the id is not reported as an orphan. Unknown id → `404`, anything but `confirmed`/`rejected`/null → `400`.
+
+#### `POST /api/graph/overlay/relationships` — assert a manual relationship
+
+```bash
+curl -X POST http://localhost:8080/api/graph/overlay/relationships \
+  -H 'Content-Type: application/json' \
+  -d '{"from": "demo:users.id", "to": "billing:invoices.customer_id"}'
+```
+
+Asserts a manual relationship between two column ids that both exist in the document — typically a cross-source link discovery could not know — and returns its relationship id: `{"id": "demo:users.id->billing:invoices.customer_id"}`. A manual relationship enters the document as `manual`/`confirmed` with no confidence. Asserting the same pair again changes nothing. Unknown column → `404`, an end that is not a column id → `400`.
+
+#### `DELETE /api/graph/overlay/relationships?id=…` — remove
+
+```bash
+curl -X DELETE 'http://localhost:8080/api/graph/overlay/relationships?id=demo:users.id->billing:invoices.customer_id'
+```
+
+Removes the manual relationship and/or the decision the overlay holds for that id (or both). Returns `204`, or `404` when the overlay holds neither.
+
+#### `PUT /api/graph/overlay/labels` — label an entity or column
+
+```bash
+curl -X PUT http://localhost:8080/api/graph/overlay/labels \
+  -H 'Content-Type: application/json' \
+  -d '{"id": "demo:users", "label": "Users", "description": "Registered accounts"}'
+```
+
+Labels the entity or column id, replacing any previous label for it. The label is required (at most 200 characters); the description is optional (at most 2000, may be null). Returns `204`; unknown id → `404`, blank label → `400`.
+
+#### `DELETE /api/graph/overlay/labels?id=…` — remove a label
+
+```bash
+curl -X DELETE 'http://localhost:8080/api/graph/overlay/labels?id=demo:users'
+```
+
+Removes the label of the id. Returns `204`, or `404` when neither the document nor the overlay knows the id.
+
+**Security:** the graph endpoints are admin endpoints, like `/api/schema/**`: the document names every configured source and the overlay endpoints accept edits, so they receive no CORS headers — only `/api/data/**` does — and have no authentication of their own. `graph-enabled` is off by default for that reason; keep it off, or behind authentication and authorization, outside local development. Nothing here writes to any source database; the only file written is the overlay JSON.
 
 ## Connection layer
 

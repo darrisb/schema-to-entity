@@ -36,6 +36,16 @@ schema-to-entity:
   default-page-size: 50
   query-timeout: 15s
   schema-cache-ttl: 10m
+  # Combined schema document (graph). Requires data-api-enabled; off by
+  # default in the starter. On here so the demo shows the document, the
+  # cross-source proposals between the two sources below and the overlay
+  # endpoints. See api/README.md ("Combined schema document").
+  graph-enabled: true
+  # JSON file keeping the graph's overlay edits — labels, relationship
+  # decisions, manual relationships. The only file the starter writes
+  # itself; rediscovery never wipes it. A local file, so it is not shared
+  # between instances.
+  overlay-file: ${GRAPH_OVERLAY_FILE:./schema-overlay.json}
   # Origins allowed to call the read-only data API from a browser. This covers
   # /api/data/** only. Add the deployed UI origin for production.
   data-allowed-origins:
@@ -49,4 +59,14 @@ schema-to-entity:
       username: ${DEMO_DB_USERNAME:dynamic_meta_user}
       password: ${DEMO_DB_PASSWORD:dynamic_meta_password}
       schema: ${DEMO_DB_SCHEMA:public}
+      max-pool-size: 4
+    billing:
+      # Second demo source: the billing schema in the same compose Postgres,
+      # created by db/init/02-billing.sql. Having two sources is what makes
+      # the graph propose cross-source relationships; those proposals stay
+      # "proposed" until confirmed through the overlay endpoints.
+      url: ${BILLING_DB_URL:jdbc:postgresql://localhost:5433/dynamic_meta_db}
+      username: ${BILLING_DB_USERNAME:dynamic_meta_user}
+      password: ${BILLING_DB_PASSWORD:dynamic_meta_password}
+      schema: ${BILLING_DB_SCHEMA:billing}
       max-pool-size: 4
