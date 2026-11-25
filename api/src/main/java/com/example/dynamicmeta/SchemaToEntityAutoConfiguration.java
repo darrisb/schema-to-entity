@@ -22,6 +22,9 @@ import com.example.dynamicmeta.data.QueryParameterParser;
 import com.example.dynamicmeta.data.SchemaCache;
 import com.example.dynamicmeta.data.SourceDefinitions;
 import com.example.dynamicmeta.data.SourceRegistry;
+import com.example.dynamicmeta.graph.GraphController;
+import com.example.dynamicmeta.graph.OverlayStore;
+import com.example.dynamicmeta.graph.SchemaGraphBuilder;
 
 import javax.sql.DataSource;
 
@@ -145,7 +148,8 @@ public class SchemaToEntityAutoConfiguration {
         /**
          * DA-007: browser access to the read-only data endpoints only. The
          * mapping is path-scoped, so admin endpoints such as
-         * {@code /api/schema/extract} are unaffected.
+         * {@code /api/schema/extract} and {@code /api/graph/**} are
+         * unaffected.
          */
         @Bean
         @ConditionalOnMissingBean
@@ -153,6 +157,41 @@ public class SchemaToEntityAutoConfiguration {
                 havingValue = "true")
         DataCorsConfiguration dataCorsConfiguration(SchemaToEntityProperties properties) {
             return new DataCorsConfiguration(properties);
+        }
+
+        /**
+         * GR-007: the combined document and overlay editing. The graph reads
+         * the same discovered schemas the data API caches, so it also needs
+         * {@code data-api-enabled}; the endpoints are admin endpoints and get
+         * no CORS mapping. {@code graph-enabled} is off by default because
+         * the document names every source and accepts edits.
+         */
+        @Configuration(proxyBeanMethods = false)
+        @ConditionalOnProperty(prefix = "schema-to-entity", name = "graph-enabled",
+                havingValue = "true")
+        @ConditionalOnProperty(prefix = "schema-to-entity", name = "data-api-enabled",
+                havingValue = "true")
+        static class GraphConfiguration {
+
+            @Bean
+            @ConditionalOnMissingBean
+            OverlayStore overlayStore(SchemaToEntityProperties properties) {
+                return new OverlayStore(properties.getOverlayFile());
+            }
+
+            @Bean
+            @ConditionalOnMissingBean
+            SchemaGraphBuilder schemaGraphBuilder(SourceRegistry sourceRegistry,
+                    SchemaCache schemaCache) {
+                return new SchemaGraphBuilder(sourceRegistry, schemaCache);
+            }
+
+            @Bean
+            @ConditionalOnMissingBean
+            GraphController graphController(SchemaGraphBuilder schemaGraphBuilder,
+                    OverlayStore overlayStore) {
+                return new GraphController(schemaGraphBuilder, overlayStore);
+            }
         }
     }
 }

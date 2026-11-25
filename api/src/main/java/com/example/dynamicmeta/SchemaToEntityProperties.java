@@ -45,6 +45,12 @@ public class SchemaToEntityProperties {
 
     /** Off by default: the read-only data API is opt-in. */
     private boolean dataApiEnabled = false;
+    /**
+     * Off by default: the graph endpoints expose the whole combined schema
+     * document and accept overlay edits, so host applications must opt in
+     * and should keep them behind authentication and authorization.
+     */
+    private boolean graphEnabled = false;
     /** Maximum number of rows a data API query may return. */
     private int maxPageSize = 200;
     /** Number of rows a data API query returns when the caller does not specify one. */
@@ -194,6 +200,14 @@ public class SchemaToEntityProperties {
 
     public void setSchemaCacheTtl(Duration schemaCacheTtl) {
         this.schemaCacheTtl = schemaCacheTtl;
+    }
+
+    public boolean isGraphEnabled() {
+        return graphEnabled;
+    }
+
+    public void setGraphEnabled(boolean graphEnabled) {
+        this.graphEnabled = graphEnabled;
     }
 
     public List<String> getDataAllowedOrigins() {
