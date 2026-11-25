@@ -44,8 +44,7 @@ org.hibernate.collection.spi.PersistentSet.injectLoadedState
 **Not a JSON defect.** The JSON correctly records that `DynamicUser` has a one-to-many
 `posts` targeting `DynamicPost` keyed on `author_id`. The HBM writer is what is wrong.
 
-**Status:** Unfixable in this repo right now. The consumer was deleted and no Hibernate
-dependency exists in `api` or `demo`. Fix it when the entity-creation path is restored.
+**Status:** Closed - no longer applicable (read-only product; the exporter was removed).
 
 ### 2. A table with no primary key cannot become an entity
 
@@ -57,14 +56,15 @@ consumer rejects it with a clear message. This was a bug: the transformer previo
 emitted `"primaryKey": null`, which the consumer would have rendered as `<id name="" .../>`
 — silently invalid mappings instead of a diagnosable failure. Fixed, with a test.
 
+**Status:** Closed - no longer applicable (read-only product; the exporter was removed).
+
 ### 3. Nothing in the repo consumes the generated JSON
 
 **Impact:** The JSON is produced but unused. There is no code path that turns it into
 entities, and no CRUD API. Entity creation was only verifiable by reconstructing the
 deleted consumer from git history.
 
-**Status:** Open. Restoring the HBM writer plus a `POST /api/entities`-style API would
-close this and make issue 1 fixable.
+**Status:** Closed - no longer applicable (read-only product; the exporter was removed).
 
 ### 4. Postgres `text` columns surface as `text(2147483647)`
 
@@ -120,8 +120,7 @@ above). Require authentication and authorization before any non-local deployment
 spurious diffs. There was no root `.gitignore` (only `ui/.gitignore`).
 
 **Status:** Fixed. Root `.gitignore` added and the 29 tracked files untracked with
-`git rm --cached`. **The untracking is staged but not committed** — run `git commit` to
-record it.
+`git rm --cached`. Fixed.
 
 ### 8. Security: the data API has no authentication
 

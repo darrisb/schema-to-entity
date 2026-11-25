@@ -1,3 +1,5 @@
+superseded in November 2026 because the product is read-only; kept for history
+
 # Runtime Reload and Java Migration Requirements
 
 This document separates two related but different efforts:
