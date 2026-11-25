@@ -7,7 +7,9 @@ import com.example.dynamicmeta.SchemaToEntityProperties.SourceProperties;
 import com.example.dynamicmeta.connection.ConnectionPolicy;
 import com.example.dynamicmeta.connection.ConnectionStringParser;
 import com.example.dynamicmeta.connection.JdbcConnectionFactory;
+import com.example.dynamicmeta.connection.ViewDependencyReader;
 import org.h2.jdbcx.JdbcDataSource;
+import org.mockito.MockedConstruction;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -36,6 +38,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockConstruction;
 import static org.mockito.Mockito.when;
 
 /**
@@ -302,6 +305,81 @@ class SchemaCacheTests {
 
         assertThat(tokens.columns()).extracting(ColumnModel::name).containsExactly("LABEL");
         assertThat(tokens.keyColumns()).isEmpty();
+    }
+
+    @Test
+    void declaredForeignKeysAreCarriedIntoTheEntityModel() throws Exception {
+        seed("ste-cache-fk",
+                "create table customers (id bigint primary key, name varchar(80) not null)",
+                "create table orders (id bigint primary key, customer_id bigint not null, "
+                        + "foreign key (customer_id) references customers (id))");
+        SourceRegistry registry = registry(h2Source("ste-cache-fk"));
+        SchemaCache cache = new SchemaCache(registry, discovery(), new SchemaToEntityProperties());
+
+        SourceSchema schema = cache.get("orders");
+        EntityModel orders = schema.entity("orders");
+
+        assertThat(orders.foreignKeys()).hasSize(1);
+        ForeignKeyModel foreignKey = orders.foreignKeys().getFirst();
+        assertThat(foreignKey.column()).isEqualTo("CUSTOMER_ID");
+        assertThat(foreignKey.referencedTable()).isEqualTo("CUSTOMERS");
+        assertThat(foreignKey.referencedColumn()).isEqualTo("ID");
+        assertThat(foreignKey.origin()).isEqualTo("declared");
+        // Tables never carry view dependencies, and the referenced table
+        // declares no foreign keys of its own.
+        assertThat(orders.baseTables()).isEmpty();
+        assertThat(schema.entity("customers").foreignKeys()).isEmpty();
+
+        registry.destroy();
+    }
+
+    @Test
+    void viewsCarryInferredForeignKeysAndBaseTables() throws Exception {
+        seed("ste-cache-view-fk",
+                "create table customers (id bigint primary key, name varchar(80) not null)",
+                "create table orders (id bigint primary key, customer_id bigint not null, "
+                        + "foreign key (customer_id) references customers (id))",
+                "create view order_overview as select id, customer_id from orders");
+        SourceRegistry registry = registry(h2Source("ste-cache-view-fk"));
+        SchemaCache cache = new SchemaCache(registry, discovery(), new SchemaToEntityProperties());
+
+        // H2 has no view dependency catalog, so the reader is mocked like in
+        // SchemaDiscoveryServiceTests to supply the view's base tables.
+        try (MockedConstruction<ViewDependencyReader> mocked = mockConstruction(
+                ViewDependencyReader.class,
+                (reader, context) -> when(reader.read(any(), any(), any(), any()))
+                        .thenReturn(Map.of("ORDER_OVERVIEW", List.of("orders"))))) {
+            EntityModel view = cache.get("orders").entity("order_overview");
+
+            assertThat(view.baseTables()).containsExactly("orders");
+            assertThat(view.foreignKeys()).hasSize(1);
+            ForeignKeyModel inferred = view.foreignKeys().getFirst();
+            assertThat(inferred.column()).isEqualTo("CUSTOMER_ID");
+            assertThat(inferred.referencedTable()).isEqualTo("CUSTOMERS");
+            assertThat(inferred.origin()).isEqualTo("inferred");
+        }
+
+        registry.destroy();
+    }
+
+    @Test
+    void hidingTheForeignKeyColumnRemovesTheForeignKey() throws Exception {
+        seed("ste-cache-hidden-fk",
+                "create table customers (id bigint primary key)",
+                "create table orders (id bigint primary key, customer_id bigint, "
+                        + "foreign key (customer_id) references customers (id))");
+        SourceProperties source = h2Source("ste-cache-hidden-fk");
+        source.setHiddenColumns(List.of("orders.customer_id"));
+        SourceRegistry registry = registry(source);
+        SchemaCache cache = new SchemaCache(registry, discovery(),
+                new SchemaToEntityProperties());
+
+        EntityModel orders = cache.get("orders").entity("orders");
+
+        assertThat(orders.columns()).extracting(ColumnModel::name).containsExactly("ID");
+        assertThat(orders.foreignKeys()).isEmpty();
+
+        registry.destroy();
     }
 
     @Test

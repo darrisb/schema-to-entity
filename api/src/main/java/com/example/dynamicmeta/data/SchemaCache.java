@@ -197,7 +197,52 @@ public class SchemaCache {
         // still be listed but not fetched by key.
         boolean keyHidden = keyColumns.stream()
                 .anyMatch(key -> isHidden(name, key, hiddenColumns));
-        return new EntityModel(name, kind, columns, keyHidden ? List.of() : keyColumns);
+        return new EntityModel(name, kind, columns, keyHidden ? List.of() : keyColumns,
+                foreignKeys(table, name, hiddenColumns), baseTables(table.get("baseTables")));
+    }
+
+    /**
+     * Copies the discovered foreign keys into the model, dropping any whose
+     * column is hidden: a hidden column is not part of the entity, so its
+     * foreign key must not be either. Applies to declared and inferred keys.
+     */
+    private static List<ForeignKeyModel> foreignKeys(Map<String, Object> table, String entityName,
+                                                      List<String> hiddenColumns) {
+        if (!(table.get("foreignKeys") instanceof List<?> values) || values.isEmpty()) {
+            return List.of();
+        }
+        List<ForeignKeyModel> foreignKeys = new ArrayList<>();
+        for (Object item : values) {
+            if (!(item instanceof Map<?, ?> value)) {
+                continue;
+            }
+            Map<String, Object> foreignKey = asStringKeyMap(value);
+            String column = (String) foreignKey.get("column");
+            if (isHidden(entityName, column, hiddenColumns)) {
+                continue;
+            }
+            foreignKeys.add(new ForeignKeyModel(
+                    (String) foreignKey.get("name"),
+                    column,
+                    (String) foreignKey.get("referencedTable"),
+                    (String) foreignKey.get("referencedColumn"),
+                    (String) foreignKey.get("origin")));
+        }
+        return List.copyOf(foreignKeys);
+    }
+
+    /** Copies the view dependency names a discovery entry carries; tables have none. */
+    private static List<String> baseTables(Object value) {
+        if (!(value instanceof List<?> values) || values.isEmpty()) {
+            return List.of();
+        }
+        List<String> baseTables = new ArrayList<>();
+        for (Object item : values) {
+            if (item instanceof String baseTable) {
+                baseTables.add(baseTable);
+            }
+        }
+        return List.copyOf(baseTables);
     }
 
     /**
