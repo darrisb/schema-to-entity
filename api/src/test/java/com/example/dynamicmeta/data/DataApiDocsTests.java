@@ -53,11 +53,13 @@ class DataApiDocsTests {
         assertThat(readme).contains("GET /api/data/{source}/{entity}");
         assertThat(readme).contains("GET /api/data/{source}/{entity}/{key}");
 
+        // One curl example per data endpoint shape: the source listing, a page
+        // query and a single-row lookup.
         List<String> urls = curlUrls();
         assertThat(urls).isNotEmpty();
-        for (String url : urls) {
-            assertThat(url).contains("/api/data/");
-        }
+        assertThat(urls).anyMatch(url -> url.matches(".*/api/data/[^/?]+/?(\\?.*)?"));
+        assertThat(urls).anyMatch(url -> url.matches(".*/api/data/[^/?]+/[^/?]+(\\?.*)?"));
+        assertThat(urls).anyMatch(url -> url.matches(".*/api/data/[^/?]+/[^/?]+/[^/?]+(\\?.*)?"));
     }
 
     @Test
@@ -143,11 +145,19 @@ class DataApiDocsTests {
                 || name.startsWith("contains.");
     }
 
+    /**
+     * The README's curl examples for the data API. Other features documented in
+     * the same README (the graph endpoints, for example) have their own query
+     * parameters, so only {@code /api/data/} examples are checked here.
+     */
     private List<String> curlUrls() {
         List<String> urls = new ArrayList<>();
         Matcher matcher = CURL.matcher(readme);
         while (matcher.find()) {
-            urls.add(matcher.group(1) != null ? matcher.group(1) : matcher.group(2));
+            String url = matcher.group(1) != null ? matcher.group(1) : matcher.group(2);
+            if (url.contains("/api/data/")) {
+                urls.add(url);
+            }
         }
         return urls;
     }
