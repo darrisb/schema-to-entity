@@ -33,7 +33,14 @@ import com.example.dynamicmeta.data.SourceSchema;
  * {@link GraphRelationship} within that one source. A foreign key whose
  * target entity or target column is not in the document — for example a
  * reference into another schema — is skipped, as is one whose own column was
- * not discovered. Entities, their columns and the relationships are sorted
+ * not discovered. After every requested source is built,
+ * {@link CrossSourceInference} proposes cross-source relationships from
+ * entity and column names alone: no source's metadata knows another's
+ * tables, so links between sources can only be proposed, never discovered.
+ * Proposals are appended after the within-source relationships and never
+ * join two entities of one source; they can be left out entirely by passing
+ * {@code false} as the {@code crossSourceInference} constructor flag.
+ * Entities, their columns and the relationships are sorted
  * by id, so two builds over the same schemas produce the same document.
  * {@code label}, {@code description} and {@code orphans} are left empty by
  * this builder. The builder only reads metadata; nothing in it writes to any
@@ -56,6 +63,7 @@ public class SchemaGraphBuilder {
     private final SourceRegistry registry;
     private final SchemaCache cache;
     private final Clock clock;
+    private final boolean crossSourceInference;
 
     public SchemaGraphBuilder(SourceRegistry registry, SchemaCache cache) {
         this(registry, cache, Clock.systemUTC());
@@ -67,9 +75,23 @@ public class SchemaGraphBuilder {
      * @param clock clock supplying the document's {@code generatedAt}
      */
     public SchemaGraphBuilder(SourceRegistry registry, SchemaCache cache, Clock clock) {
+        this(registry, cache, clock, true);
+    }
+
+    /**
+     * Constructor that also chooses whether cross-source relationships are
+     * proposed. Used by tests that need to control time or inference.
+     *
+     * @param clock                 clock supplying the document's {@code generatedAt}
+     * @param crossSourceInference  {@code false} to build the document without
+     *                              the proposed cross-source relationships
+     */
+    public SchemaGraphBuilder(SourceRegistry registry, SchemaCache cache, Clock clock,
+                              boolean crossSourceInference) {
         this.registry = Objects.requireNonNull(registry, "registry");
         this.cache = Objects.requireNonNull(cache, "cache");
         this.clock = Objects.requireNonNull(clock, "clock");
+        this.crossSourceInference = crossSourceInference;
     }
 
     /**
@@ -103,6 +125,15 @@ public class SchemaGraphBuilder {
                 sources.add(new GraphSource(name, UNKNOWN_DATABASE_TYPE, null, null,
                         GraphSource.UNAVAILABLE, DISCOVERY_FAILED));
             }
+        }
+
+        // Cross-source proposals come after the within-source relationships:
+        // only now that every requested source is built can names be matched
+        // across sources. Inference only reads the entities already collected
+        // and adds proposed relationships, never declared ones, and never a
+        // link inside one source.
+        if (crossSourceInference) {
+            relationships.addAll(CrossSourceInference.propose(entities));
         }
 
         Map<String, GraphRelationship> unique = new LinkedHashMap<>();

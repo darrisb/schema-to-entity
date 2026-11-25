@@ -2,6 +2,7 @@ package com.example.dynamicmeta.graph;
 
 import java.sql.Connection;
 import java.sql.Statement;
+import java.time.Clock;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -258,6 +259,52 @@ class SchemaGraphBuilderTests {
         registry.destroy();
     }
 
+    @Test
+    void crossSourceNamesProduceProposedCrossSourceRelationships() throws Exception {
+        seed("ste-graph-x-shop",
+                "create table orders (id bigint primary key, customer_id bigint not null)");
+        seed("ste-graph-x-crm",
+                "create table customers (id bigint primary key)");
+        Map<String, SourceProperties> sources = new LinkedHashMap<>();
+        sources.put("shop", h2Source("ste-graph-x-shop"));
+        sources.put("crm", h2Source("ste-graph-x-crm"));
+        SourceRegistry registry = registry(sources);
+
+        SchemaGraph graph = builder(registry).build(Set.of());
+
+        assertThat(graph.relationships()).hasSize(1);
+        GraphRelationship proposal = graph.relationships().getFirst();
+        assertThat(proposal.id()).isEqualTo("shop:orders.customer_id->crm:customers.id");
+        assertThat(proposal.from()).isEqualTo("shop:orders.customer_id");
+        assertThat(proposal.to()).isEqualTo("crm:customers.id");
+        assertThat(proposal.origin()).isEqualTo(GraphRelationship.INFERRED);
+        assertThat(proposal.scope()).isEqualTo(GraphRelationship.CROSS_SOURCE);
+        assertThat(proposal.status()).isEqualTo(GraphRelationship.PROPOSED);
+        assertThat(proposal.confidence()).isEqualTo(0.8);
+        assertThat(proposal.evidence())
+                .containsExactly("name-match", "type-match", "key-name-match");
+
+        registry.destroy();
+    }
+
+    @Test
+    void crossSourceInferenceCanBeTurnedOff() throws Exception {
+        seed("ste-graph-x-off-shop",
+                "create table orders (id bigint primary key, customer_id bigint not null)");
+        seed("ste-graph-x-off-crm",
+                "create table customers (id bigint primary key)");
+        Map<String, SourceProperties> sources = new LinkedHashMap<>();
+        sources.put("shop", h2Source("ste-graph-x-off-shop"));
+        sources.put("crm", h2Source("ste-graph-x-off-crm"));
+        SourceRegistry registry = registry(sources);
+
+        SchemaGraph graph = builder(registry, false).build(Set.of());
+
+        assertThat(graph.relationships()).isEmpty();
+
+        registry.destroy();
+    }
+
     // -------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------
@@ -280,8 +327,14 @@ class SchemaGraphBuilderTests {
     }
 
     private static SchemaGraphBuilder builder(SourceRegistry registry) {
+        return builder(registry, true);
+    }
+
+    private static SchemaGraphBuilder builder(SourceRegistry registry,
+                                              boolean crossSourceInference) {
         return new SchemaGraphBuilder(registry,
-                new SchemaCache(registry, discovery(), new SchemaToEntityProperties()));
+                new SchemaCache(registry, discovery(), new SchemaToEntityProperties()),
+                Clock.systemUTC(), crossSourceInference);
     }
 
     private static SchemaDiscoveryService discovery() {
