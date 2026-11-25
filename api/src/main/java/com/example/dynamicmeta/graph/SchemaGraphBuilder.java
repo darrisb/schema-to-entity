@@ -37,8 +37,10 @@ import com.example.dynamicmeta.data.SourceSchema;
  * {@link CrossSourceInference} proposes cross-source relationships from
  * entity and column names alone: no source's metadata knows another's
  * tables, so links between sources can only be proposed, never discovered.
- * Proposals are appended after the within-source relationships and never
- * join two entities of one source; they can be left out entirely by passing
+ * Proposals are collected after the within-source relationships — only once
+ * every requested source is built can names be matched across sources — and
+ * are then deduplicated and sorted by id together with them. They never join
+ * two entities of one source; they can be left out entirely by passing
  * {@code false} as the {@code crossSourceInference} constructor flag.
  * Entities, their columns and the relationships are sorted
  * by id, so two builds over the same schemas produce the same document.
