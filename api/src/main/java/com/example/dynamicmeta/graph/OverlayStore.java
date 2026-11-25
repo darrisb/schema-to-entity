@@ -139,26 +139,32 @@ public final class OverlayStore {
         apply(overlay.withoutManualRelationship(relationshipId));
     }
 
-    /** Saves only when the change actually altered the overlay. */
+    /**
+     * Saves only when the change actually altered the overlay. The file is
+     * written first and the in-memory overlay replaced only after the write
+     * succeeds, so a failed save never leaves the API serving an edit that the
+     * file (and so the next restart) does not have.
+     */
     private void apply(Overlay next) {
         if (next == overlay) {
             return;
         }
+        save(next);
         overlay = next;
-        save();
     }
 
     /**
      * Writes the overlay to a temporary file in the overlay file's folder,
      * then moves it over the original.
      */
-    private void save() {
+    private void save(Overlay value) {
         try {
             Path directory = file.getParent();
+            Files.createDirectories(directory);
             Path temporary = Files.createTempFile(directory,
                     file.getFileName().toString() + "-", ".tmp");
             try {
-                mapper.writeValue(temporary.toFile(), overlay);
+                mapper.writeValue(temporary.toFile(), value);
                 try {
                     Files.move(temporary, file,
                             StandardCopyOption.REPLACE_EXISTING,

@@ -19,6 +19,10 @@ RUN mvn --batch-mode -f demo/pom.xml package -DskipTests
 FROM eclipse-temurin:21-jre-alpine AS runtime
 
 RUN addgroup -S spring && adduser -S spring -G spring
+# Writable folder for the graph overlay file (schema-overlay.json). /app is
+# owned by root, so the non-root user cannot write there. Mount a volume here
+# to keep overlay edits across container rebuilds.
+RUN mkdir -p /data && chown spring:spring /data
 WORKDIR /app
 
 COPY --from=build --chown=spring:spring /workspace/demo/target/*.jar ./app.jar

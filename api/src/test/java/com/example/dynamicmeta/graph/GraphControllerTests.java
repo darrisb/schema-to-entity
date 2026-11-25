@@ -128,6 +128,15 @@ class GraphControllerTests {
     }
 
     @Test
+    void unknownSourceNameReturns404() throws Exception {
+        mockMvc.perform(get("/api/graph").param("sources", "sales,nope"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("Unknown data source: nope"));
+        mockMvc.perform(get("/api/graph/relationships").param("sources", "nope"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
     void relationshipListingIsFilteredByStatus() throws Exception {
         mockMvc.perform(get("/api/graph/relationships"))
                 .andExpect(status().isOk())

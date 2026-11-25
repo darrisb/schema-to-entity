@@ -103,6 +103,11 @@ public class SchemaGraphBuilder {
      *                    configured source
      * @return one snapshot of every requested source, available or not
      */
+    /** The names of every configured source. */
+    public Set<String> sourceNames() {
+        return registry.names();
+    }
+
     public SchemaGraph build(Set<String> sourceNames) {
         Set<String> requested = sourceNames == null || sourceNames.isEmpty()
                 ? registry.names()

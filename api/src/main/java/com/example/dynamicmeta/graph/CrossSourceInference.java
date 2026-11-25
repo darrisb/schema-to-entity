@@ -182,6 +182,12 @@ public final class CrossSourceInference {
     }
 
     private static boolean isOwnKey(GraphEntity entity, String columnName) {
+        // Only a single-column key names the row's own identity. In a composite
+        // key such as order_items(order_id, product_id) each part usually points
+        // at another table, so those columns stay candidates.
+        if (entity.keyColumns().size() != 1) {
+            return false;
+        }
         for (String key : entity.keyColumns()) {
             if (key != null && key.equalsIgnoreCase(columnName)) {
                 return true;

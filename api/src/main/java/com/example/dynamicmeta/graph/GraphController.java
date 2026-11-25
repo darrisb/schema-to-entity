@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.Set;
 
 import com.example.dynamicmeta.connection.SecretRedactor;
+import com.example.dynamicmeta.data.SourceNotFoundException;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -216,6 +217,11 @@ public class GraphController {
     public record LabelChange(String id, String label, String description) {
     }
 
+    @ExceptionHandler(SourceNotFoundException.class)
+    public ResponseEntity<Map<String, String>> unknownSource(SourceNotFoundException exception) {
+        return notFound(exception.getMessage());
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, String>> badRequest(
             IllegalArgumentException exception) {
@@ -230,7 +236,7 @@ public class GraphController {
      * Splits a comma-separated {@code sources} parameter into source names;
      * null selects every configured source.
      */
-    private static Set<String> sourceNames(String sources) {
+    private Set<String> sourceNames(String sources) {
         if (sources == null || sources.isBlank()) {
             return null;
         }
@@ -240,7 +246,17 @@ public class GraphController {
                 names.add(name.trim());
             }
         }
-        return names.isEmpty() ? null : names;
+        if (names.isEmpty()) {
+            return null;
+        }
+        // A misspelled name is a client error, not an unavailable database.
+        Set<String> configured = builder.sourceNames();
+        for (String name : names) {
+            if (!configured.contains(name)) {
+                throw new SourceNotFoundException(name);
+            }
+        }
+        return names;
     }
 
     /** A usable id: present, not blank, trimmed and lower-cased. */

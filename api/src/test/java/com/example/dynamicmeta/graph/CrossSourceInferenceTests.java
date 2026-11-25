@@ -124,6 +124,26 @@ class CrossSourceInferenceTests {
     }
 
     @Test
+    void partsOfACompositeKeyAreStillCandidates() {
+        // order_items is keyed by (order_id, product_id); each part points at
+        // another table, so product_id may still link to catalog:products.
+        GraphEntity orderItems = entity("shop", "order_items",
+                List.of(column("shop", "order_items", "order_id", "bigint", ColumnCategory.NUMBER),
+                        column("shop", "order_items", "product_id", "bigint", ColumnCategory.NUMBER)),
+                List.of("order_id", "product_id"));
+        GraphEntity products = entity("catalog", "products",
+                List.of(column("catalog", "products", "id", "bigint", ColumnCategory.NUMBER)),
+                List.of("id"));
+
+        List<GraphRelationship> proposals =
+                CrossSourceInference.propose(List.of(orderItems, products));
+
+        assertThat(proposals).extracting(GraphRelationship::from, GraphRelationship::to)
+                .containsExactly(org.assertj.core.groups.Tuple.tuple(
+                        "shop:order_items.product_id", "catalog:products.id"));
+    }
+
+    @Test
     void pluralFormsMatchIncludingYToIes() {
         GraphEntity products = entity("shop", "products",
                 List.of(column("shop", "products", "id", "bigint", ColumnCategory.NUMBER),

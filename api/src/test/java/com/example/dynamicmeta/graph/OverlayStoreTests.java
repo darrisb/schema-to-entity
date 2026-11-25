@@ -95,6 +95,29 @@ class OverlayStoreTests {
     }
 
     @Test
+    void aFailedSaveLeavesTheStoreUnchanged() throws IOException {
+        OverlayStore store = new OverlayStore(file);
+        // A non-empty directory where the file should be makes the final move fail.
+        Files.createDirectories(file.resolve("blocker"));
+
+        assertThatThrownBy(() -> store.setLabel("orders:customers", "Customers", null))
+                .isInstanceOf(java.io.UncheckedIOException.class);
+
+        assertThat(store.overlay().labels()).isEmpty();
+    }
+
+    @Test
+    void savingCreatesMissingFolders() {
+        Path nested = tempDir.resolve("data").resolve("overlays").resolve("schema-overlay.json");
+        OverlayStore store = new OverlayStore(nested);
+
+        store.setLabel("orders:customers", "Customers", null);
+
+        assertThat(Files.exists(nested)).isTrue();
+        assertThat(new OverlayStore(nested).overlay().labels()).containsKey("orders:customers");
+    }
+
+    @Test
     void labelMutatorsPersistImmediately() {
         OverlayStore store = new OverlayStore(file);
         store.setLabel("orders:customers", "Customers", "People who order");

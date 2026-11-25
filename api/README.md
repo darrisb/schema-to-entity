@@ -321,7 +321,7 @@ Names are lower-cased with the root locale, so an id is stable no matter how the
 | Field | Values | Meaning |
 |---|---|---|
 | `origin` | `declared` | Read from the database's own foreign keys. |
-| | `inferred` | Found by analysis: a view column named like a base table's key within one source, or a `*_id` / `…Id` column whose stem matches another source's entity name. |
+| | `inferred` | Found by analysis: a view column named like a base table's key within one source, or a `*_id` / `…Id` column whose stem matches another source's entity name. Columns in a composite key (such as `order_items(order_id, product_id)`) are candidates too; only a table's single-column key is skipped. `…Id` (camelCase) is only recognised when the database keeps the column's case: PostgreSQL folds unquoted names to lower case (`customerid`), so name such columns `customer_id` or quote them. |
 | | `manual` | Asserted by a person through the overlay endpoints. |
 | `scope` | `within-source` | Both ends live in the same source. |
 | | `cross-source` | The ends live in different sources. |
@@ -378,7 +378,7 @@ An abbreviated `GET /api/graph` for the demo's two sources, trimmed to one entit
 
 ### The overlay file
 
-Edits a reviewer makes — labels and descriptions for entities and columns, confirm/reject decisions on proposals, manual relationships — are kept **apart from discovery** in one JSON file, `schema-to-entity.overlay-file` (default `./schema-overlay.json`). Keeping them separate is what makes rediscovery safe: the schema can be re-discovered as often as the cache expires without ever wiping what a person decided, and an edit whose table was dropped waits in the overlay (reported as `orphans`) until the table comes back. The file is pretty-printed and written atomically (temporary file, then moved over), and it is the **only** file this starter writes itself; security settings such as hidden columns stay in configuration, never in the overlay. It is a local file path, not a shared store: running more than one instance of the host application gives each instance its own overlay.
+Edits a reviewer makes — labels and descriptions for entities and columns, confirm/reject decisions on proposals, manual relationships — are kept **apart from discovery** in one JSON file, `schema-to-entity.overlay-file` (default `./schema-overlay.json`). Keeping them separate is what makes rediscovery safe: the schema can be re-discovered as often as the cache expires without ever wiping what a person decided, and an edit whose table was dropped waits in the overlay (reported as `orphans`) until the table comes back. The file is pretty-printed and written atomically (temporary file, then moved over), and it is the **only** file this starter writes itself; security settings such as hidden columns stay in configuration, never in the overlay. It is a local file path, not a shared store: running more than one instance of the host application gives each instance its own overlay. The folder is created if it does not exist. In Docker, point `overlay-file` at a mounted volume (the bundled `docker-compose.yml` uses `/data/schema-overlay.json` on the `overlay_data` volume); otherwise edits are lost when the container is rebuilt, and a non-root container user may not be able to write next to the application jar at all.
 
 ### Endpoints
 
@@ -390,7 +390,7 @@ All endpoints live under `/api/graph` and return JSON; errors are always `{"erro
 curl 'http://localhost:8080/api/graph?sources=demo,billing&includeRejected=false'
 ```
 
-The built document with the overlay applied, so every read reflects the stored edits. `sources` is a comma-separated list limiting the build; omit it for every configured source. `includeRejected=true` keeps rejected relationships in the response (default `false`).
+The built document with the overlay applied, so every read reflects the stored edits. `sources` is a comma-separated list limiting the build; omit it for every configured source. An unknown source name returns `404`. `includeRejected=true` keeps rejected relationships in the response (default `false`).
 
 #### `GET /api/graph/relationships` — just the relationships
 
