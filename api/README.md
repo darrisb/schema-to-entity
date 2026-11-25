@@ -423,10 +423,11 @@ Asserts a manual relationship between two column ids that both exist in the docu
 #### `DELETE /api/graph/overlay/relationships?id=…` — remove
 
 ```bash
-curl -X DELETE 'http://localhost:8080/api/graph/overlay/relationships?id=demo:users.id->billing:invoices.customer_id'
+curl -G -X DELETE http://localhost:8080/api/graph/overlay/relationships \
+  --data-urlencode 'id=demo:users.id->billing:invoices.customer_id'
 ```
 
-Removes the manual relationship and/or the decision the overlay holds for that id (or both). Returns `204`, or `404` when the overlay holds neither.
+Removes the manual relationship and/or the decision the overlay holds for that id (or both). Returns `204`, or `404` when the overlay holds neither. Ids passed as query parameters must be URL-encoded — a raw `>` in the id (as in `demo:users.id->billing:invoices.customer_id`) is rejected by the server with `400` before the request reaches the endpoint, so encode it as `%3E` or let `curl --data-urlencode` do it.
 
 #### `PUT /api/graph/overlay/labels` — label an entity or column
 
