@@ -43,26 +43,6 @@ interface SchemaPayload {
   tables?: SchemaTable[];
 }
 
-interface SpringProperty {
-  name?: string;
-  columnName?: string;
-  type?: string;
-  nullable?: boolean;
-}
-
-interface SpringRelationship {
-  name?: string;
-  type?: string;
-  targetEntity?: string;
-}
-
-interface SpringEntity {
-  entityName?: string;
-  tableName?: string;
-  properties?: SpringProperty[];
-  relationships?: SpringRelationship[];
-}
-
 @Component({
   selector: 'app-root',
   standalone: true,
@@ -165,48 +145,14 @@ interface SpringEntity {
           }
         </section>
 
-        @if (entities().length) {
-          <section class="panel">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow">Spring metadata</p>
-                <h1>Generated entities</h1>
-              </div>
-              <div class="stats">
-                <span>{{ entities().length }} entity(s)</span>
-              </div>
-            </div>
-            <div class="entity-list">
-              @for (
-                entity of entities();
-                track entity.entityName || entity.tableName
-              ) {
-                <article class="entity-row">
-                  <div>
-                    <h2>{{ entity.entityName }}</h2>
-                    <p>{{ entity.tableName }}</p>
-                  </div>
-                  <div class="stats compact">
-                    <span
-                      >{{ entity.properties?.length || 0 }} property(s)</span
-                    >
-                    <span
-                      >{{ entity.relationships?.length || 0 }} relation(s)</span
-                    >
-                  </div>
-                </article>
-              }
-            </div>
-          </section>
-        }
-
         @if (schemaJson(); as json) {
           <section class="panel raw-panel">
             <div class="panel-heading">
               <div>
                 <p class="eyebrow">Raw schema JSON</p>
-                <h1>Current payload</h1>
+                <h1 class="eyebrow">Current payload</h1>
               </div>
+              <h1 class="eyebrow">Current payload</h1>
             </div>
             <pre>{{ json }}</pre>
           </section>
@@ -430,10 +376,6 @@ export class AppComponent {
     this.normalizeSchema(this.schemaService.enrichedSchema()),
   );
   readonly tables = computed(() => this.schema()?.tables || []);
-  readonly entities = computed(
-    () =>
-      (this.schemaService.springMetadata()?.entities as SpringEntity[]) || [],
-  );
   readonly columnCount = computed(() =>
     this.tables().reduce(
       (count, table) => count + this.tableColumns(table).length,

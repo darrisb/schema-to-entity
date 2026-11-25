@@ -20,11 +20,6 @@
   <button class="secondary" type="button" (click)="schemaService.loadSample()">
     Load Sample Schema
   </button>
-
-  <button type="button" [disabled]="schemaService.exporting() || !schemaService.enrichedSchema()"
-    (click)="schemaService.exportSpringMetadata()">
-    {{ schemaService.exporting() ? 'Exporting…' : 'Export Spring Metadata JSON' }}
-  </button>
 </div>
 
 @if (schemaService.lastExtractSummary(); as summary) {
