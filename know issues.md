@@ -3,7 +3,11 @@
 Findings from building JSON metadata from the live database schema and verifying that
 real entities can be created from it.
 
-## Verified working
+> **Note (November 2026):** the project is now read-only. The Spring metadata exporter
+> and the Hibernate entity runtime it fed are gone, so the "Verified working" section and
+> issues 1-3 below are kept as history only.
+
+## Verified working (historical)
 
 The generated JSON was fed to the real consumer (the deleted
 `spring-example` `DynamicEntityMappingConfig.SpringMetadataHbmReader`, reconstructed

@@ -13,6 +13,11 @@ dist/
 # Logs
 *.log
 ngserve.log
+test_output*.txt
+
+# Coding orchestrator run files
+build.state.json
+build.usage.json
 
 # Runtime metadata written outside the packaged jar
 config/spring-entities-config.json

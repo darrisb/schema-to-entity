@@ -150,9 +150,8 @@ interface SchemaPayload {
             <div class="panel-heading">
               <div>
                 <p class="eyebrow">Raw schema JSON</p>
-                <h1 class="eyebrow">Current payload</h1>
+                <h1>Current payload</h1>
               </div>
-              <h1 class="eyebrow">Current payload</h1>
             </div>
             <pre>{{ json }}</pre>
           </section>
