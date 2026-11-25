@@ -30,6 +30,14 @@ public class SchemaToEntityProperties {
     private int maxConcurrentExplicitConnections = 4;
 
     /**
+     * Path of the JSON overlay file that keeps user edits — labels,
+     * descriptions and relationship decisions — so rediscovery never wipes
+     * them. The only file this starter writes itself; security settings such
+     * as hidden columns stay in configuration, not in the overlay.
+     */
+    private String overlayFile = "./schema-overlay.json";
+
+    /**
      * Named read-only data sources. The data API reads from these sources by
      * name; generated UIs cannot and must not send database credentials.
      */
@@ -130,6 +138,14 @@ public class SchemaToEntityProperties {
 
     public void setMaxConcurrentExplicitConnections(int maxConcurrentExplicitConnections) {
         this.maxConcurrentExplicitConnections = maxConcurrentExplicitConnections;
+    }
+
+    public String getOverlayFile() {
+        return overlayFile;
+    }
+
+    public void setOverlayFile(String overlayFile) {
+        this.overlayFile = overlayFile;
     }
 
     public Map<String, SourceProperties> getSources() {
