@@ -50,6 +50,9 @@ public class SchemaGraphBuilder {
     /** Confidence recorded for a relationship inferred from a view column. */
     private static final double INFERRED_CONFIDENCE = 0.9;
 
+    /** Evidence token naming how an inferred relationship was found. */
+    private static final String VIEW_COLUMN_NAME_EVIDENCE = "view-column-name";
+
     private final SourceRegistry registry;
     private final SchemaCache cache;
     private final Clock clock;
@@ -168,7 +171,8 @@ public class SchemaGraphBuilder {
      * column is not in the document (for example a reference into another
      * schema). A declared foreign key keeps status {@code declared} with no
      * confidence; one inferred through a view becomes a {@code proposed}
-     * relationship at 0.9 confidence, evidenced by the view column's name.
+     * relationship at 0.9 confidence with the fixed evidence token
+     * {@code "view-column-name"}.
      */
     private GraphRelationship toRelationship(String source, SourceSchema schema,
                                               EntityModel model, ForeignKeyModel foreignKey) {
@@ -192,7 +196,7 @@ public class SchemaGraphBuilder {
                 GraphRelationship.WITHIN_SOURCE,
                 inferred ? GraphRelationship.PROPOSED : GraphRelationship.DECLARED,
                 inferred ? INFERRED_CONFIDENCE : null,
-                inferred ? List.of(foreignKey.column()) : List.of());
+                inferred ? List.of(VIEW_COLUMN_NAME_EVIDENCE) : List.of());
     }
 
     /** Finds a column of the entity by name, ignoring case. */

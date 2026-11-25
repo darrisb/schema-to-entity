@@ -150,7 +150,7 @@ class SchemaGraphBuilderTests {
             assertThat(inferred.scope()).isEqualTo(GraphRelationship.WITHIN_SOURCE);
             assertThat(inferred.status()).isEqualTo(GraphRelationship.PROPOSED);
             assertThat(inferred.confidence()).isEqualTo(0.9);
-            assertThat(inferred.evidence()).containsExactly("CUSTOMER_ID");
+            assertThat(inferred.evidence()).containsExactly("view-column-name");
 
             // The view's base tables are recorded as entity ids of the same source.
             GraphEntity view = graph.entities().stream()
