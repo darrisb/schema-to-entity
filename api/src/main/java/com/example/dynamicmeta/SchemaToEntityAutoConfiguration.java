@@ -33,6 +33,9 @@ import com.example.dynamicmeta.drift.SnapshotStore;
 import com.example.dynamicmeta.graph.GraphController;
 import com.example.dynamicmeta.graph.OverlayStore;
 import com.example.dynamicmeta.graph.SchemaGraphBuilder;
+import com.example.dynamicmeta.pages.PageController;
+import com.example.dynamicmeta.pages.PageDependencyExtractor;
+import com.example.dynamicmeta.pages.PageStore;
 
 import javax.sql.DataSource;
 
@@ -159,6 +162,32 @@ public class SchemaToEntityAutoConfiguration {
                 havingValue = "true")
         DataCorsConfiguration dataCorsConfiguration(SchemaToEntityProperties properties) {
             return new DataCorsConfiguration(properties);
+        }
+
+        /** Page documents are opt-in admin data and receive no browser CORS mapping. */
+        @Configuration(proxyBeanMethods = false)
+        @ConditionalOnProperty(prefix = "schema-to-entity", name = "pages-enabled",
+                havingValue = "true")
+        static class PageConfiguration {
+
+            @Bean
+            @ConditionalOnMissingBean
+            PageStore pageStore(SchemaToEntityProperties properties) {
+                return new PageStore(properties.getPagesDir());
+            }
+
+            @Bean
+            @ConditionalOnMissingBean
+            PageDependencyExtractor pageDependencyExtractor() {
+                return new PageDependencyExtractor();
+            }
+
+            @Bean
+            @ConditionalOnMissingBean
+            PageController pageController(PageStore pageStore,
+                    PageDependencyExtractor pageDependencyExtractor) {
+                return new PageController(pageStore, pageDependencyExtractor);
+            }
         }
 
         /**
