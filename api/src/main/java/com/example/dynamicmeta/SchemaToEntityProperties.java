@@ -38,6 +38,16 @@ public class SchemaToEntityProperties {
     private String overlayFile = "./schema-overlay.json";
 
     /**
+     * Folder holding the accepted baseline {@link
+     * com.example.dynamicmeta.drift.SchemaSnapshot} of each source as
+     * {@code <source>.json}, with superseded baselines under
+     * {@code history/<source>/}. Drift detection reads and writes these
+     * files; nothing here touches a source database. The folder is created
+     * when it is missing.
+     */
+    private String snapshotDir = "./snapshots";
+
+    /**
      * Named read-only data sources. The data API reads from these sources by
      * name; generated UIs cannot and must not send database credentials.
      */
@@ -152,6 +162,14 @@ public class SchemaToEntityProperties {
 
     public void setOverlayFile(String overlayFile) {
         this.overlayFile = overlayFile;
+    }
+
+    public String getSnapshotDir() {
+        return snapshotDir;
+    }
+
+    public void setSnapshotDir(String snapshotDir) {
+        this.snapshotDir = snapshotDir;
     }
 
     public Map<String, SourceProperties> getSources() {
