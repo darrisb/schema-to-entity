@@ -97,6 +97,33 @@ class PageStatusServiceTests {
     }
 
     @Test
+    void pageListResolvesSuccessfulSourceOnlyOnceAndKeepsStatusesAligned() throws Exception {
+        SchemaCache cache = mock(SchemaCache.class);
+        when(cache.get("crm")).thenReturn(schema("ID", "NAME"));
+        when(cache.schemaVersion("crm")).thenReturn("current");
+        Page first = page("""
+                [{"dataSource":{"type":"rest","url":"/api/data/crm/customers",
+                  "query":{"fields":"name"}}}]
+                """);
+        Page second = new Page("second-page", "Second", null,
+                mapper.readTree("""
+                        [{"dataSource":{"type":"rest","url":"/api/data/crm/customers",
+                          "query":{"fields":"missing"}}}]
+                        """), null, null);
+
+        List<PageStatus> statuses = new PageStatusService(cache, extractor)
+                .statuses(List.of(first, second));
+
+        assertThat(statuses).extracting(PageStatus::pageId, PageStatus::state)
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple("customer-page", "ok"),
+                        org.assertj.core.groups.Tuple.tuple("second-page", "broken"));
+        assertThat(statuses.get(1).missingColumns())
+                .containsExactly("crm:customers.missing");
+        verify(cache, times(1)).get("crm");
+    }
+
+    @Test
     void unknownSourceIsUnavailableWithoutDetails() throws Exception {
         SchemaCache cache = mock(SchemaCache.class);
         when(cache.get("missing")).thenThrow(new SourceNotFoundException("missing"));

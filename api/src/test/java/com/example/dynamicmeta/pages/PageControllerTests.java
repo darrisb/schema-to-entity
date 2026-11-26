@@ -1,8 +1,15 @@
 package com.example.dynamicmeta.pages;
 
 import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
 
 import com.example.dynamicmeta.SchemaToEntityAutoConfiguration;
+import com.example.dynamicmeta.data.ColumnCategory;
+import com.example.dynamicmeta.data.ColumnModel;
+import com.example.dynamicmeta.data.EntityModel;
+import com.example.dynamicmeta.data.SchemaCache;
+import com.example.dynamicmeta.data.SourceSchema;
 import org.h2.jdbcx.JdbcDataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -17,6 +24,8 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import javax.sql.DataSource;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -77,6 +86,36 @@ class PageControllerTests {
                 .andExpect(jsonPath("$[0].entities[0]").value("sales:orders"))
                 .andExpect(jsonPath("$[0].status.pageId").value("sales-page"))
                 .andExpect(jsonPath("$[0].status.state").value("unavailable"));
+    }
+
+    @Test
+    void listKeepsCachedSchemaStatusesAlignedWithPages() throws Exception {
+        SchemaCache cache = mock(SchemaCache.class);
+        when(cache.get("crm")).thenReturn(customerSchema());
+        when(cache.schemaVersion("crm")).thenReturn("current");
+        PageDependencyExtractor extractor = new PageDependencyExtractor();
+        mockMvc = MockMvcBuilders.standaloneSetup(new PageController(
+                new PageStore(tempDir), extractor, new PageStatusService(cache, extractor)))
+                .build();
+        putPage("a-valid-page", """
+                [{"dataSource":{"type":"rest","url":"/api/data/crm/customers",
+                  "query":{"fields":"name"}}}]
+                """);
+        putPage("b-broken-page", """
+                [{"dataSource":{"type":"rest","url":"/api/data/crm/customers",
+                  "query":{"fields":"missing"}}}]
+                """);
+
+        mockMvc.perform(get("/api/pages"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value("a-valid-page"))
+                .andExpect(jsonPath("$[0].status.pageId").value("a-valid-page"))
+                .andExpect(jsonPath("$[0].status.state").value("ok"))
+                .andExpect(jsonPath("$[1].id").value("b-broken-page"))
+                .andExpect(jsonPath("$[1].status.pageId").value("b-broken-page"))
+                .andExpect(jsonPath("$[1].status.state").value("broken"))
+                .andExpect(jsonPath("$[1].status.missingColumns[0]")
+                        .value("crm:customers.missing"));
     }
 
     @Test
@@ -156,5 +195,13 @@ class PageControllerTests {
                         WebMvcAutoConfiguration.class, SchemaToEntityAutoConfiguration.class))
                 .withBean(DataSource.class, () -> dataSource)
                 .withPropertyValues(properties);
+    }
+
+    private static SourceSchema customerSchema() {
+        EntityModel customers = new EntityModel("CUSTOMERS", "table", List.of(
+                new ColumnModel("ID", "bigint", ColumnCategory.NUMBER, false),
+                new ColumnModel("NAME", "varchar", ColumnCategory.TEXT, true)),
+                List.of("ID"));
+        return new SourceSchema("h2", null, "PUBLIC", Map.of("customers", customers));
     }
 }
