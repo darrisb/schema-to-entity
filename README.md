@@ -32,7 +32,7 @@ docker-compose up --build
 
 - **Database**: PostgreSQL (host port 5433)
 - **Spring API**: Spring Boot (host port 8081, container port 8080)
-- **UI**: Angular frontend (port 8080)
+- **UI**: Angular frontend (host port 8082, container port 80)
 
 ### Environment Variables
 
@@ -53,7 +53,7 @@ The application connects to a PostgreSQL database with the following default cre
 The application includes health checks:
 - Database: Available at port 5432
 - API: Available at port 8081
-- UI: Available at port 8080
+- UI: Available at port 8082
 
 ### Cleanup
 
