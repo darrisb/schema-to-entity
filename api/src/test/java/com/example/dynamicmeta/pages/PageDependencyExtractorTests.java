@@ -24,7 +24,7 @@ class PageDependencyExtractorTests {
                   "schemaVersion":"abc123def456"}}]
                 """);
 
-        PageDependencyExtractor.Extraction result = extractor.extract(document);
+        PageDependencies result = extractor.extract(document);
 
         assertThat(result.usages()).extracting(PageUsage::entityId)
                 .containsOnly("crm:customers");
@@ -60,7 +60,7 @@ class PageDependencyExtractorTests {
                  ]}]
                 """);
 
-        PageDependencyExtractor.Extraction result = extractor.extract(document);
+        PageDependencies result = extractor.extract(document);
 
         assertThat(result.usages()).containsExactly(
                 new PageUsage("nested", "data-source", "crm:contacts", null));
@@ -113,5 +113,46 @@ class PageDependencyExtractorTests {
 
         assertThat(extractor.extract(document).usages()).containsExactly(
                 new PageUsage("deep", "data-source", "crm:contacts", null));
+    }
+
+    @Test
+    void extractsOrdersTableColumnsAndFilters() throws Exception {
+        JsonNode document = mapper.readTree("""
+                [{"id":"orders-table","type":"table","properties":{
+                    "columns":"id|Order ID\\ncustomer_id|Customer\\nstatus|Status\\ncreated_at"
+                  },"dataSource":{"type":"rest","url":"/api/data/sales/orders"}},
+                 {"id":"customer-filter","type":"dropdown","properties":{
+                    "filterTarget":"orders-table","filterField":"customer_id","filterMode":"eq"}},
+                 {"id":"status-filter","type":"input","properties":{
+                    "filterTarget":"orders-table","filterField":"status","filterMode":"contains"}}]
+                """);
+
+        PageDependencies result = extractor.extract(document);
+
+        assertThat(result.usages()).filteredOn(usage -> "table-column".equals(usage.kind()))
+                .extracting(PageUsage::columnId)
+                .containsExactly("sales:orders.id", "sales:orders.customer_id",
+                        "sales:orders.status", "sales:orders.created_at");
+        assertThat(result.usages()).filteredOn(usage -> "filter".equals(usage.kind()))
+                .containsExactlyInAnyOrder(
+                        new PageUsage("customer-filter", "filter", "sales:orders",
+                                "sales:orders.customer_id"),
+                        new PageUsage("status-filter", "filter", "sales:orders",
+                                "sales:orders.status"));
+        assertThat(result.entities()).containsExactly("sales:orders");
+        assertThat(result.columns()).contains("sales:orders.id", "sales:orders.customer_id",
+                "sales:orders.status", "sales:orders.created_at");
+        assertThat(result.usagesOf("sales:orders.customer_id"))
+                .containsExactlyInAnyOrder("orders-table", "customer-filter");
+    }
+
+    @Test
+    void ignoresFilterWithMissingTarget() throws Exception {
+        JsonNode document = mapper.readTree("""
+                [{"id":"orphan-filter","type":"dropdown","properties":{
+                  "filterTarget":"missing-table","filterField":"status","filterMode":"eq"}}]
+                """);
+
+        assertThat(extractor.extract(document).usages()).isEmpty();
     }
 }

@@ -12,24 +12,82 @@ import com.fasterxml.jackson.databind.JsonNode;
 /** Extracts schema dependencies from visual UI page documents. */
 public final class PageDependencyExtractor {
 
-    public Extraction extract(JsonNode document) {
+    public PageDependencies extract(JsonNode document) {
         List<PageUsage> usages = new ArrayList<>();
         Map<String, String> schemaVersions = new LinkedHashMap<>();
+        Map<String, JsonNode> components = new LinkedHashMap<>();
         if (document != null && document.isArray()) {
-            document.forEach(component -> walk(component, usages, schemaVersions));
+            document.forEach(component -> index(component, components));
+            document.forEach(component -> walk(component, components, usages, schemaVersions));
         }
-        return new Extraction(usages, schemaVersions);
+        return new PageDependencies(usages, schemaVersions);
     }
 
-    private void walk(JsonNode component, List<PageUsage> usages,
+    private void index(JsonNode component, Map<String, JsonNode> components) {
+        if (component == null || !component.isObject()) {
+            return;
+        }
+        String id = text(component, "id");
+        if (id != null && !id.isBlank()) {
+            components.putIfAbsent(id, component);
+        }
+        JsonNode children = component.get("children");
+        if (children != null && children.isArray()) {
+            children.forEach(child -> index(child, components));
+        }
+    }
+
+    private void walk(JsonNode component, Map<String, JsonNode> components,
+                      List<PageUsage> usages,
                       Map<String, String> schemaVersions) {
         if (component == null || !component.isObject()) {
             return;
         }
         extractDataSource(component, usages, schemaVersions);
+        extractTableColumns(component, usages);
+        extractFilter(component, components, usages);
         JsonNode children = component.get("children");
         if (children != null && children.isArray()) {
-            children.forEach(child -> walk(child, usages, schemaVersions));
+            children.forEach(child -> walk(child, components, usages, schemaVersions));
+        }
+    }
+
+    private void extractTableColumns(JsonNode component, List<PageUsage> usages) {
+        if (!"table".equalsIgnoreCase(text(component, "type"))) {
+            return;
+        }
+        DataPath path = componentDataPath(component);
+        JsonNode properties = component.get("properties");
+        JsonNode columns = properties == null || !properties.isObject()
+                ? null : properties.get("columns");
+        if (path == null || columns == null || !columns.isTextual()) {
+            return;
+        }
+        for (String line : columns.textValue().lines().toList()) {
+            addColumnUsage(usages, text(component, "id"), "table-column", path,
+                    line.split("\\|", 2)[0]);
+        }
+    }
+
+    private void extractFilter(JsonNode component, Map<String, JsonNode> components,
+                               List<PageUsage> usages) {
+        String type = text(component, "type");
+        if (!("dropdown".equalsIgnoreCase(type) || "input".equalsIgnoreCase(type))) {
+            return;
+        }
+        JsonNode properties = component.get("properties");
+        if (properties == null || !properties.isObject()) {
+            return;
+        }
+        String targetId = text(properties, "filterTarget");
+        String field = text(properties, "filterField");
+        JsonNode target = targetId == null ? null : components.get(targetId);
+        if (target == null || !"table".equalsIgnoreCase(text(target, "type"))) {
+            return;
+        }
+        DataPath path = componentDataPath(target);
+        if (path != null) {
+            addColumnUsage(usages, text(component, "id"), "filter", path, field);
         }
     }
 
@@ -112,6 +170,15 @@ public final class PageDependencyExtractor {
         }
     }
 
+    private DataPath componentDataPath(JsonNode component) {
+        JsonNode dataSource = component.get("dataSource");
+        if (dataSource == null || !dataSource.isObject()
+                || !"rest".equalsIgnoreCase(text(dataSource, "type"))) {
+            return null;
+        }
+        return dataPath(text(dataSource, "url"));
+    }
+
     private DataPath dataPath(String url) {
         if (url == null || url.isBlank()) {
             return null;
@@ -137,13 +204,6 @@ public final class PageDependencyExtractor {
     private String text(JsonNode node, String field) {
         JsonNode value = node.get(field);
         return value != null && value.isTextual() ? value.textValue() : null;
-    }
-
-    public record Extraction(List<PageUsage> usages, Map<String, String> schemaVersions) {
-        public Extraction {
-            usages = List.copyOf(usages);
-            schemaVersions = Map.copyOf(schemaVersions);
-        }
     }
 
     private record DataPath(String source, String entity) {
