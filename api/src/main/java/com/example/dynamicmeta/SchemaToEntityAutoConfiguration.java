@@ -37,6 +37,8 @@ import com.example.dynamicmeta.pages.PageController;
 import com.example.dynamicmeta.pages.PageCorsConfiguration;
 import com.example.dynamicmeta.pages.PageDependencyExtractor;
 import com.example.dynamicmeta.pages.PageStore;
+import com.example.dynamicmeta.pages.PageStatusService;
+import org.springframework.beans.factory.ObjectProvider;
 
 import javax.sql.DataSource;
 
@@ -185,9 +187,17 @@ public class SchemaToEntityAutoConfiguration {
 
             @Bean
             @ConditionalOnMissingBean
-            PageController pageController(PageStore pageStore,
+            PageStatusService pageStatusService(ObjectProvider<SchemaCache> schemaCache,
                     PageDependencyExtractor pageDependencyExtractor) {
-                return new PageController(pageStore, pageDependencyExtractor);
+                return new PageStatusService(schemaCache.getIfAvailable(), pageDependencyExtractor);
+            }
+
+            @Bean
+            @ConditionalOnMissingBean
+            PageController pageController(PageStore pageStore,
+                    PageDependencyExtractor pageDependencyExtractor,
+                    PageStatusService pageStatusService) {
+                return new PageController(pageStore, pageDependencyExtractor, pageStatusService);
             }
 
             @Bean

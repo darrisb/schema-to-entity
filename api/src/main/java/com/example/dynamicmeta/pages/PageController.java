@@ -28,18 +28,33 @@ public final class PageController {
 
     private final PageStore store;
     private final PageDependencyExtractor dependencyExtractor;
+    private final PageStatusService statusService;
 
     public PageController(PageStore store, PageDependencyExtractor dependencyExtractor) {
+        this(store, dependencyExtractor, new PageStatusService(null, dependencyExtractor));
+    }
+
+    public PageController(PageStore store, PageDependencyExtractor dependencyExtractor,
+                          PageStatusService statusService) {
         this.store = store;
         this.dependencyExtractor = dependencyExtractor;
+        this.statusService = statusService;
     }
 
     @GetMapping
     public List<PageSummary> list() {
         return store.list().stream()
                 .map(page -> new PageSummary(page.id(), page.name(), page.description(),
-                        page.updatedAt(), dependencyExtractor.extract(page.document()).entities()))
+                        page.updatedAt(), dependencyExtractor.extract(page.document()).entities(),
+                        statusService.status(page)))
                 .toList();
+    }
+
+    @GetMapping("/{id}/status")
+    public ResponseEntity<?> status(@PathVariable String id) {
+        return store.get(id)
+                .<ResponseEntity<?>>map(page -> ResponseEntity.ok(statusService.status(page)))
+                .orElseGet(() -> notFound(id));
     }
 
     @GetMapping("/{id}")
@@ -97,7 +112,7 @@ public final class PageController {
     }
 
     public record PageSummary(String id, String name, String description, Instant updatedAt,
-                              Set<String> entities) {
+                              Set<String> entities, PageStatus status) {
     }
 
     public record PageDetail(String id, String name, String description, JsonNode document,
