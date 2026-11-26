@@ -188,6 +188,8 @@ Returns a JSON object with the `schemaVersion` and an `entities` array of entity
 }
 ```
 
+**Breaking response-shape change (DR-008):** this endpoint previously returned the bare JSON array of entity descriptors; the array now travels under `entities` next to `schemaVersion`. Clients that parsed the top-level array must read `entities`. Nothing in this repository consumes the listing over HTTP (the demo application and the Angular UI never call `GET /api/data/{source}`), so no in-repo consumer needed updating; deployed external clients are affected and the new shape is recorded here as a deliberate breaking change.
+
 #### `GET /api/data/{source}/{entity}` — query a page of rows
 
 ```bash
