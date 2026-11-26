@@ -86,6 +86,7 @@ public class DriftController {
     public DriftReport report(
             @PathVariable("source") String source,
             @RequestParam(name = "check", defaultValue = "false") boolean check) {
+        requireConfigured(source);
         return check ? driftService.check(source) : lastOrCheck(source);
     }
 
@@ -95,11 +96,14 @@ public class DriftController {
      * the baseline now matches the schema. The fingerprint must be the one the
      * last check showed: a stale one means the schema moved since the
      * reviewer read the report, and accepting then would accept something
-     * else. Both that and accepting before any check return 409.
+     * else. Both that and accepting before any check return 409. The source
+     * itself must be configured first: an unknown source is 404 whatever the
+     * fingerprint looks like.
      */
     @PostMapping("/{source}/accept")
     public DriftReport accept(@PathVariable("source") String source,
                               @RequestBody AcceptRequest request) {
+        requireConfigured(source);
         if (request == null || request.fingerprint() == null
                 || request.fingerprint().isBlank()) {
             throw new IllegalArgumentException("fingerprint must not be blank");

@@ -211,6 +211,18 @@ class DriftControllerTests {
                         .content("{\"fingerprint\": \"%s\"}".formatted("0".repeat(64))))
                 .andExpect(status().isNotFound());
 
+        // The source is checked before the fingerprint: a blank fingerprint
+        // for an unknown source is 404, not 400.
+        mockMvc.perform(post("/api/graph/drift/nope/accept")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"fingerprint\": \"  \"}"))
+                .andExpect(status().isNotFound());
+
+        mockMvc.perform(post("/api/graph/drift/nope/accept")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isNotFound());
+
         mockMvc.perform(post("/api/graph/drift/nope/renames")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"from\": \"nope:orders\", \"to\": \"nope:purchases\"}"))
