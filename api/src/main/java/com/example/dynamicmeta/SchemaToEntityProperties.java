@@ -48,6 +48,14 @@ public class SchemaToEntityProperties {
     private String snapshotDir = "./snapshots";
 
     /**
+     * How often every source is checked for drift in the background. Unset (the
+     * default) schedules nothing: drift is then only checked when a caller asks.
+     * A check only reads metadata and may write baseline snapshots, never a
+     * source database.
+     */
+    private Duration driftCheckInterval;
+
+    /**
      * Named read-only data sources. The data API reads from these sources by
      * name; generated UIs cannot and must not send database credentials.
      */
@@ -170,6 +178,14 @@ public class SchemaToEntityProperties {
 
     public void setSnapshotDir(String snapshotDir) {
         this.snapshotDir = snapshotDir;
+    }
+
+    public Duration getDriftCheckInterval() {
+        return driftCheckInterval;
+    }
+
+    public void setDriftCheckInterval(Duration driftCheckInterval) {
+        this.driftCheckInterval = driftCheckInterval;
     }
 
     public Map<String, SourceProperties> getSources() {

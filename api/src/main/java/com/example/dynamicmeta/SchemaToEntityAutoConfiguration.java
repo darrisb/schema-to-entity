@@ -22,6 +22,10 @@ import com.example.dynamicmeta.data.QueryParameterParser;
 import com.example.dynamicmeta.data.SchemaCache;
 import com.example.dynamicmeta.data.SourceDefinitions;
 import com.example.dynamicmeta.data.SourceRegistry;
+import com.example.dynamicmeta.drift.DriftCheckScheduler;
+import com.example.dynamicmeta.drift.DriftService;
+import com.example.dynamicmeta.drift.SnapshotBuilder;
+import com.example.dynamicmeta.drift.SnapshotStore;
 import com.example.dynamicmeta.graph.GraphController;
 import com.example.dynamicmeta.graph.OverlayStore;
 import com.example.dynamicmeta.graph.SchemaGraphBuilder;
@@ -186,6 +190,54 @@ public class SchemaToEntityAutoConfiguration {
                     OverlayStore overlayStore) {
                 return new GraphController(schemaGraphBuilder, overlayStore);
             }
+        }
+    }
+
+    /**
+     * DR-004: drift detection compares a source's schema with its accepted
+     * baseline. It reads the same discovered schemas the data API caches, so it
+     * needs {@code data-api-enabled}, and it is part of the graph's review
+     * workflow, so it is registered with {@code graph-enabled}. Nothing here
+     * writes to a source database: the only files written are the baseline
+     * snapshots under {@code schema-to-entity.snapshot-dir}.
+     */
+    @Configuration(proxyBeanMethods = false)
+    @ConditionalOnProperty(prefix = "schema-to-entity", name = "graph-enabled",
+            havingValue = "true")
+    @ConditionalOnProperty(prefix = "schema-to-entity", name = "data-api-enabled",
+            havingValue = "true")
+    static class DriftConfiguration {
+
+        @Bean
+        @ConditionalOnMissingBean
+        SnapshotStore snapshotStore(SchemaToEntityProperties properties) {
+            return new SnapshotStore(properties.getSnapshotDir());
+        }
+
+        @Bean
+        @ConditionalOnMissingBean
+        SnapshotBuilder snapshotBuilder() {
+            return new SnapshotBuilder();
+        }
+
+        @Bean
+        @ConditionalOnMissingBean
+        DriftService driftService(SourceRegistry sourceRegistry, SchemaCache schemaCache,
+                SnapshotBuilder snapshotBuilder, SnapshotStore snapshotStore) {
+            return new DriftService(sourceRegistry, schemaCache, snapshotBuilder, snapshotStore);
+        }
+
+        /**
+         * The periodic check exists only when an interval is configured; unset
+         * (the default) means drift is checked on demand only. One daemon thread
+         * starts after the context is ready and is stopped when it closes.
+         */
+        @Bean(initMethod = "start", destroyMethod = "stop")
+        @ConditionalOnMissingBean
+        @ConditionalOnProperty(prefix = "schema-to-entity", name = "drift-check-interval")
+        DriftCheckScheduler driftCheckScheduler(DriftService driftService,
+                SchemaToEntityProperties properties) {
+            return new DriftCheckScheduler(driftService, properties.getDriftCheckInterval());
         }
     }
 }
