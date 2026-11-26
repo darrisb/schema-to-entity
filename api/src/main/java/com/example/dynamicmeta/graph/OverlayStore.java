@@ -140,6 +140,24 @@ public final class OverlayStore {
     }
 
     /**
+     * Moves every overlay edit made for the old entity or column id to the
+     * new one — its label, its columns' labels when an entity is renamed,
+     * the decisions naming it on either side, and the manual relationship
+     * ends at it — and saves immediately. A label the overlay already has
+     * for the new id is kept and the old one dropped; a rename of an id the
+     * overlay says nothing about, or of an id to itself, changes nothing and
+     * saves nothing. See {@link Overlay#withRenamedId(String, String)} for
+     * the exact rules.
+     *
+     * @throws IllegalArgumentException when either id is blank, or the new
+     *         id would make a manual relationship end or a decision id
+     *         malformed
+     */
+    public synchronized void renameId(String oldId, String newId) {
+        apply(overlay.withRenamedId(oldId, newId));
+    }
+
+    /**
      * Saves only when the change actually altered the overlay. The file is
      * written first and the in-memory overlay replaced only after the write
      * succeeds, so a failed save never leaves the API serving an edit that the

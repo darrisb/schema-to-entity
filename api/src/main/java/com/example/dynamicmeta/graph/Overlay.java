@@ -6,12 +6,15 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Function;
 
 /**
  * The edits a person has made over a discovered {@link SchemaGraph}: a label
  * and a description for entity and column ids, a confirmed or rejected
  * decision for every relationship that asked for review, and relationships
  * between columns that discovery could not know about.
+ * {@link #withRenamedId} moves all of that to a new id when a rename is
+ * confirmed, so the edits follow the object instead of being orphaned.
  * <p>
  * The overlay is stored as JSON by {@link OverlayStore}, apart from both
  * configuration and discovery, so rediscovering the schema never wipes what
@@ -154,6 +157,53 @@ public record Overlay(Map<String, Label> labels,
     }
 
     /**
+     * Returns the overlay with every edit made for the old entity or column
+     * id moved to the new one, so confirming a rename carries the reviewer's
+     * work over instead of leaving it orphaned: label keys, relationship
+     * decision ids and manual relationship ends are all rewritten.
+     * <p>
+     * An id is rewritten when it equals {@code oldId} or starts with
+     * {@code oldId} followed by a dot: renaming an entity moves its
+     * columns' edits along, renaming a column touches only that column, and
+     * ids that merely begin with the same characters — {@code shop:orders}
+     * under a rename of {@code shop:order} — stay where they are. Decision
+     * ids are rewritten one side of {@code ->} at a time, so a relationship
+     * that named the renamed object follows it and the other end is left
+     * alone. When the overlay already holds a label for the new id, that
+     * label stays and the old one is dropped: a rename never overwrites what
+     * a person wrote for the new name.
+     * <p>
+     * Both ids are lower-cased like every other overlay id. An old id equal
+     * to the new one, or one the overlay says nothing about, returns
+     * {@code this}.
+     *
+     * @throws IllegalArgumentException when either id is blank, or the new
+     *         id would make a manual relationship end or a decision id
+     *         malformed
+     */
+    public Overlay withRenamedId(String oldId, String newId) {
+        String from = idKey(oldId);
+        String to = idKey(newId);
+        if (from.equals(to)) {
+            return this;
+        }
+        Map<String, Label> nextLabels = renamedKeys(labels, from, to,
+                key -> renamed(key, from, to));
+        Map<String, String> nextDecisions = renamedKeys(relationshipDecisions, from, to,
+                id -> renamedRelationshipId(id, from, to));
+        List<ManualRelationship> nextManuals = new ArrayList<>(manualRelationships.size());
+        for (ManualRelationship entry : manualRelationships) {
+            String nextFrom = renamed(entry.from(), from, to);
+            String nextTo = renamed(entry.to(), from, to);
+            nextManuals.add(nextFrom.equals(entry.from()) && nextTo.equals(entry.to())
+                    ? entry
+                    : new ManualRelationship(nextFrom, nextTo));
+        }
+        Overlay next = new Overlay(nextLabels, nextDecisions, nextManuals);
+        return next.equals(this) ? this : next;
+    }
+
+    /**
      * A person's label and description for one entity or column id.
      *
      * @param label       short display name, at most {@link Overlay#MAX_LABEL_LENGTH}
@@ -262,6 +312,45 @@ public record Overlay(Map<String, Label> labels,
             throw new IllegalArgumentException("id must not be blank");
         }
         return trimmed.toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * Copies the entries under the renamed keys, keeping the order. An entry
+     * whose new key the overlay already has on its own is dropped: the
+     * existing entry for that id wins over the moved one.
+     */
+    private static <V> Map<String, V> renamedKeys(Map<String, V> entries, String from,
+            String to, Function<String, String> renamer) {
+        Map<String, V> renamed = new LinkedHashMap<>();
+        for (Map.Entry<String, V> entry : entries.entrySet()) {
+            String key = renamer.apply(entry.getKey());
+            if (key.equals(entry.getKey()) || !entries.containsKey(key)) {
+                renamed.put(key, entry.getValue());
+            }
+        }
+        return renamed;
+    }
+
+    /**
+     * The id after a rename of {@code from} to {@code to}: the new id
+     * itself, the new id with the rest kept for ids under it, and the id
+     * unchanged for everything else.
+     */
+    private static String renamed(String id, String from, String to) {
+        if (id.equals(from)) {
+            return to;
+        }
+        if (id.startsWith(from + ".")) {
+            return to + id.substring(from.length());
+        }
+        return id;
+    }
+
+    /** The relationship id after each of its two column ends is renamed. */
+    private static String renamedRelationshipId(String relationshipId, String from, String to) {
+        GraphIds.RelationshipId parts = GraphIds.parseRelationshipId(relationshipId);
+        return GraphIds.relationshipId(renamed(parts.from(), from, to),
+                renamed(parts.to(), from, to));
     }
 
     /** A value that must be present and at most {@code max} characters long. */
