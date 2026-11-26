@@ -30,10 +30,23 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
  * REST data source configured with {@code responsePath: "items"} can consume
  * them directly. Every error is returned as {@code {"error": ...}} with the
  * message passed through {@link SecretRedactor}.
+ * <p>
+ * DR-008: every successful response carries the {@value #SCHEMA_VERSION_HEADER}
+ * header naming the schema version the data was read from, and the entity
+ * listing repeats it in its JSON as {@code schemaVersion}. The version comes
+ * from the cached schema entry, so it costs nothing per request. Error
+ * responses carry no version: nothing was served.
  */
 @RestController
 @RequestMapping("/api/data")
 public class DataController {
+
+    /**
+     * Header naming the schema version a successful data response was read
+     * from (DR-008). Registered as a CORS exposed header by
+     * {@link DataCorsConfiguration} so browsers can read it.
+     */
+    public static final String SCHEMA_VERSION_HEADER = "X-Schema-Version";
 
     /**
      * Messages returned for database-side failures. The data endpoints are meant
@@ -53,30 +66,42 @@ public class DataController {
         this.queryService = queryService;
     }
 
-    /** Lists the entities discovered for a source. */
+    /** Lists the entities discovered for a source, with their schema version. */
     @GetMapping("/{source}")
-    public List<DataQueryService.EntityDescriptor> entities(@PathVariable String source) {
-        return queryService.entities(source);
+    public ResponseEntity<DataQueryService.EntityListing> entities(@PathVariable String source) {
+        DataQueryService.EntityListing listing = queryService.listing(source);
+        return ResponseEntity.ok()
+                .header(SCHEMA_VERSION_HEADER, listing.schemaVersion())
+                .body(listing);
     }
 
     /** Returns one page of rows for an entity. */
     @GetMapping("/{source}/{entity}")
-    public DataQueryService.DataPage rows(
+    public ResponseEntity<DataQueryService.DataPage> rows(
             @PathVariable String source,
             @PathVariable String entity,
             @RequestParam MultiValueMap<String, String> parameters,
             @RequestParam(name = "total", defaultValue = "true") boolean total)
             throws SQLException {
-        return queryService.query(source, entity, withoutTotal(parameters), total);
+        DataQueryService.DataPage page =
+                queryService.query(source, entity, withoutTotal(parameters), total);
+        return versioned(source, page);
     }
 
     /** Returns one row by its single-column key. */
     @GetMapping("/{source}/{entity}/{key}")
-    public Map<String, Object> byKey(
+    public ResponseEntity<Map<String, Object>> byKey(
             @PathVariable String source,
             @PathVariable String entity,
             @PathVariable String key) throws SQLException {
-        return queryService.byKey(source, entity, key);
+        return versioned(source, queryService.byKey(source, entity, key));
+    }
+
+    /** A successful body plus the version of the cached schema it was read from. */
+    private <T> ResponseEntity<T> versioned(String source, T body) {
+        return ResponseEntity.ok()
+                .header(SCHEMA_VERSION_HEADER, queryService.schemaVersion(source))
+                .body(body);
     }
 
     /** The {@code total} switch is handled here, not by the query parser. */

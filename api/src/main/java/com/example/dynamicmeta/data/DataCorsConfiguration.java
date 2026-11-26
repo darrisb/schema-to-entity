@@ -22,6 +22,10 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  * only wildcard and must be written explicitly; every other entry is matched
  * exactly. Only GET and OPTIONS are allowed, credentials are never sent, and
  * the preflight response is cached for one hour.
+ * <p>
+ * DR-008: {@value DataController#SCHEMA_VERSION_HEADER} is registered as an
+ * exposed header, so a cross-origin browser can read the schema version each
+ * successful data response carries.
  */
 public class DataCorsConfiguration implements WebMvcConfigurer {
 
@@ -50,6 +54,8 @@ public class DataCorsConfiguration implements WebMvcConfigurer {
         }
         registration.allowedMethods("GET", "OPTIONS")
                 .allowCredentials(false)
-                .maxAge(MAX_AGE_SECONDS);
+                .maxAge(MAX_AGE_SECONDS)
+                // DR-008: the schema version travels on every data response.
+                .exposedHeaders(DataController.SCHEMA_VERSION_HEADER);
     }
 }

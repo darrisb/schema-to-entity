@@ -155,13 +155,13 @@ The data API is **READ-ONLY**: it only ever issues `SELECT` and `SELECT COUNT(*)
 
 Give each source a database account with **SELECT-only grants** on the schemas and tables it may read. The API never writes, so the account does not need (and should not have) `INSERT`, `UPDATE`, `DELETE` or DDL privileges. Never configure a source with an account that owns or can modify the data.
 
-Browser access is controlled by `schema-to-entity.data-allowed-origins` (default empty, meaning no CORS headers). List origins explicitly, or write `*` to allow any origin. The mapping covers `/api/data/**` only, allows `GET` and `OPTIONS` without credentials, and caches preflight responses for one hour; admin endpoints such as `/api/schema/extract` never receive CORS headers.
+Browser access is controlled by `schema-to-entity.data-allowed-origins` (default empty, meaning no CORS headers). List origins explicitly, or write `*` to allow any origin. The mapping covers `/api/data/**` only, allows `GET` and `OPTIONS` without credentials, caches preflight responses for one hour, and exposes the `X-Schema-Version` header so browsers can read it; admin endpoints such as `/api/schema/extract` never receive CORS headers.
 
 Each source's schema is discovered once and cached as the typed query allowlist (`SchemaCache`). The cache honours the source's `tables` allowlist and `view-keys`, and re-discovers automatically after `schema-to-entity.schema-cache-ttl` (default `10m`); `SchemaCache.refresh(source)` forces rediscovery.
 
 ### Endpoints
 
-All endpoints are `GET` and return JSON. Errors raised by the data API are returned as `{"error": "..."}` with the message passed through the secret redactor; unmapped methods or paths receive Spring's default error response.
+All endpoints are `GET` and return JSON. Every successful response carries an `X-Schema-Version` header naming the schema version its data was read from: the first 12 hex characters of the current snapshot fingerprint for the source, held alongside the cached schema so it is computed once per discovery rather than per request. It changes only when the cache starts serving a different structure (an expired `schema-cache-ttl` or a `SchemaCache.refresh`). The entity listing repeats the same value in its JSON body. Error responses carry no version, since nothing was served. Errors raised by the data API are returned as `{"error": "..."}` with the message passed through the secret redactor; unmapped methods or paths receive Spring's default error response.
 
 #### `GET /api/data/{source}` — list the entities of a source
 
@@ -169,20 +169,23 @@ All endpoints are `GET` and return JSON. Errors raised by the data API are retur
 curl http://localhost:8080/api/data/demo
 ```
 
-Returns a JSON array of entity descriptors:
+Returns a JSON object with the `schemaVersion` and an `entities` array of entity descriptors:
 
 ```json
-[
-  {
-    "name": "CUSTOMERS",
-    "kind": "table",
-    "keyColumns": ["ID"],
-    "columns": [
-      { "name": "ID", "type": "bigint", "category": "NUMBER", "nullable": false },
-      { "name": "NAME", "type": "varchar(80)", "category": "TEXT", "nullable": false }
-    ]
-  }
-]
+{
+  "schemaVersion": "1a2b3c4d5e6f",
+  "entities": [
+    {
+      "name": "CUSTOMERS",
+      "kind": "table",
+      "keyColumns": ["ID"],
+      "columns": [
+        { "name": "ID", "type": "bigint", "category": "NUMBER", "nullable": false },
+        { "name": "NAME", "type": "varchar(80)", "category": "TEXT", "nullable": false }
+      ]
+    }
+  ]
+}
 ```
 
 #### `GET /api/data/{source}/{entity}` — query a page of rows

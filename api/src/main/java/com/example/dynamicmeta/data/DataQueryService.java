@@ -89,6 +89,27 @@ public final class DataQueryService {
     }
 
     /**
+     * Lists the source's entities together with the schema version they were
+     * read from (DR-008), so a caller can tell which snapshot a listing describes.
+     *
+     * @throws SourceNotFoundException when the source is not configured
+     */
+    public EntityListing listing(String source) {
+        return new EntityListing(entities(source), schemaVersion(source));
+    }
+
+    /**
+     * The short version of the source's currently cached schema (DR-008): the
+     * leading characters of the snapshot fingerprint, stable while the cache
+     * serves one schema and changed by {@code refresh} or an expired TTL.
+     *
+     * @throws SourceNotFoundException when the source is not configured
+     */
+    public String schemaVersion(String source) {
+        return schemaCache.schemaVersion(source);
+    }
+
+    /**
      * Runs a validated page query for one entity.
      *
      * @param includeTotal when false the COUNT statement is skipped and the
@@ -396,6 +417,17 @@ public final class DataQueryService {
         public EntityDescriptor {
             keyColumns = List.copyOf(keyColumns);
             columns = List.copyOf(columns);
+        }
+    }
+
+    /**
+     * The entity list of one source plus the schema version (DR-008) it was
+     * read from. The descriptors themselves are unchanged.
+     */
+    public record EntityListing(List<EntityDescriptor> entities, String schemaVersion) {
+
+        public EntityListing {
+            entities = List.copyOf(entities);
         }
     }
 

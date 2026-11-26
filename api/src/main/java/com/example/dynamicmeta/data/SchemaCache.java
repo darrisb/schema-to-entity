@@ -16,6 +16,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import com.example.dynamicmeta.SchemaDiscoveryService;
 import com.example.dynamicmeta.SchemaToEntityProperties;
 import com.example.dynamicmeta.connection.ConnectionException;
+import com.example.dynamicmeta.drift.SchemaVersion;
 
 /**
  * Caches one discovered {@link SourceSchema} per configured source.
@@ -27,6 +28,12 @@ import com.example.dynamicmeta.connection.ConnectionException;
  * {@code schema-to-entity.schema-cache-ttl} elapses; {@link #refresh(String)}
  * forces rediscovery. The source's configured tables allowlist and view keys
  * are applied during discovery.
+ * <p>
+ * DR-008: each cache entry also carries the source's short schema version (the
+ * leading characters of the snapshot fingerprint of the cached schema, see
+ * {@link SchemaVersion}). It is computed once per discovery, next to the entry,
+ * so {@link #schemaVersion(String)} serves the data API without hashing
+ * anything per request, and it changes exactly when the cached schema changes.
  * <p>
  * Concurrent first calls for one source are serialized so the schema is
  * discovered only once. The data API is read-only: discovery reads JDBC
@@ -70,21 +77,7 @@ public class SchemaCache {
      * @throws SourceNotFoundException when the source is not configured
      */
     public SourceSchema get(String source) {
-        requireConfigured(source);
-        CachedSchema cached = cache.get(source);
-        if (cached != null && !expired(cached)) {
-            return cached.schema();
-        }
-        Object lock = locks.computeIfAbsent(source, key -> new Object());
-        synchronized (lock) {
-            cached = cache.get(source);
-            if (cached != null && !expired(cached)) {
-                return cached.schema();
-            }
-            SourceSchema schema = discover(source);
-            cache.put(source, new CachedSchema(schema, clock.instant()));
-            return schema;
-        }
+        return cached(source).schema();
     }
 
     /**
@@ -96,10 +89,55 @@ public class SchemaCache {
         requireConfigured(source);
         Object lock = locks.computeIfAbsent(source, key -> new Object());
         synchronized (lock) {
-            SourceSchema schema = discover(source);
-            cache.put(source, new CachedSchema(schema, clock.instant()));
-            return schema;
+            return store(source).schema();
         }
+    }
+
+    /**
+     * Returns the short schema version of the source's currently cached schema
+     * (DR-008), discovering the schema on first use or when the configured TTL
+     * has expired. The version is the leading
+     * {@value com.example.dynamicmeta.drift.SchemaVersion#LENGTH} characters of
+     * the snapshot fingerprint and changes only when the cached schema changes.
+     *
+     * @throws SourceNotFoundException when the source is not configured
+     */
+    public String schemaVersion(String source) {
+        return cached(source).schemaVersion();
+    }
+
+    /**
+     * The cache entry for the source, discovering it on first use or when the
+     * configured TTL has expired. Concurrent first calls for one source are
+     * serialized so the schema is discovered only once.
+     */
+    private CachedSchema cached(String source) {
+        requireConfigured(source);
+        CachedSchema cached = cache.get(source);
+        if (cached != null && !expired(cached)) {
+            return cached;
+        }
+        Object lock = locks.computeIfAbsent(source, key -> new Object());
+        synchronized (lock) {
+            cached = cache.get(source);
+            if (cached != null && !expired(cached)) {
+                return cached;
+            }
+            return store(source);
+        }
+    }
+
+    /**
+     * Discovers the source and stores its schema and schema version together.
+     * The caller holds the source's lock, so the entry can be replaced safely.
+     */
+    private CachedSchema store(String source) {
+        SourceSchema schema = discover(source);
+        Instant discoveredAt = clock.instant();
+        CachedSchema cached = new CachedSchema(schema, discoveredAt,
+                SchemaVersion.of(source, schema, discoveredAt));
+        cache.put(source, cached);
+        return cached;
     }
 
     /**
@@ -320,6 +358,11 @@ public class SchemaCache {
         return (Map<String, Object>) map;
     }
 
-    private record CachedSchema(SourceSchema schema, Instant discoveredAt) {
+    /**
+     * One cached discovery: the schema, when it was found, and the short schema
+     * version of that structure (DR-008), computed once here so requests only
+     * read it back.
+     */
+    private record CachedSchema(SourceSchema schema, Instant discoveredAt, String schemaVersion) {
     }
 }

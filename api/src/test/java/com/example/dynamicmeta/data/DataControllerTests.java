@@ -70,27 +70,28 @@ class DataControllerTests {
 
     @Test
     void listsEntitiesWithNameKindKeyAndColumns() throws Exception {
+        // DR-008 moved the descriptors under "entities" and added "schemaVersion".
         mockMvc.perform(get("/api/data/orders"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[?(@.name == 'CUSTOMERS')].name")
+                .andExpect(jsonPath("$.entities[?(@.name == 'CUSTOMERS')].name")
                         .value(hasItem("CUSTOMERS")))
-                .andExpect(jsonPath("$[?(@.name == 'CUSTOMERS')].kind")
+                .andExpect(jsonPath("$.entities[?(@.name == 'CUSTOMERS')].kind")
                         .value(hasItem("table")))
-                .andExpect(jsonPath("$[?(@.name == 'CUSTOMERS')].keyColumns[0]")
+                .andExpect(jsonPath("$.entities[?(@.name == 'CUSTOMERS')].keyColumns[0]")
                         .value(hasItem("ID")))
-                .andExpect(jsonPath("$[?(@.name == 'CUSTOMERS')]"
+                .andExpect(jsonPath("$.entities[?(@.name == 'CUSTOMERS')]"
                                 + ".columns[?(@.name == 'ID')].type")
                         .value(hasItem("bigint")))
-                .andExpect(jsonPath("$[?(@.name == 'CUSTOMERS')]"
+                .andExpect(jsonPath("$.entities[?(@.name == 'CUSTOMERS')]"
                                 + ".columns[?(@.name == 'ID')].category")
                         .value(hasItem("NUMBER")))
-                .andExpect(jsonPath("$[?(@.name == 'CUSTOMERS')]"
+                .andExpect(jsonPath("$.entities[?(@.name == 'CUSTOMERS')]"
                                 + ".columns[?(@.name == 'ID')].nullable")
                         .value(hasItem(false)))
-                .andExpect(jsonPath("$[?(@.name == 'CUSTOMERS')]"
+                .andExpect(jsonPath("$.entities[?(@.name == 'CUSTOMERS')]"
                                 + ".columns[?(@.name == 'NAME')].nullable")
                         .value(hasItem(false)))
-                .andExpect(jsonPath("$[?(@.name == 'CUSTOMER_NAMES')].kind")
+                .andExpect(jsonPath("$.entities[?(@.name == 'CUSTOMER_NAMES')].kind")
                         .value(hasItem("view")));
     }
 
