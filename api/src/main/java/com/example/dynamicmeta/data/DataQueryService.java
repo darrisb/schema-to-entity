@@ -63,12 +63,15 @@ public final class DataQueryService {
     }
 
     /**
-     * Lists the entities discovered for a source.
+     * Lists the entities discovered for a source. Each descriptor carries the
+     * schema version (DR-008) it was read from, so the historical bare-array
+     * response shape stays intact and clients only see one added field.
      *
      * @throws SourceNotFoundException when the source is not configured
      */
     public List<EntityDescriptor> entities(String source) {
         SourceSchema schema = schemaCache.get(source);
+        String schemaVersion = schemaCache.schemaVersion(source);
         List<EntityDescriptor> entities = new ArrayList<>(schema.entities().size());
         for (EntityModel entity : schema.entities().values()) {
             List<ColumnDescriptor> columns = new ArrayList<>(entity.columns().size());
@@ -83,19 +86,10 @@ public final class DataQueryService {
                     entity.name(),
                     entity.kind(),
                     entity.keyColumns(),
-                    columns));
+                    columns,
+                    schemaVersion));
         }
         return List.copyOf(entities);
-    }
-
-    /**
-     * Lists the source's entities together with the schema version they were
-     * read from (DR-008), so a caller can tell which snapshot a listing describes.
-     *
-     * @throws SourceNotFoundException when the source is not configured
-     */
-    public EntityListing listing(String source) {
-        return new EntityListing(entities(source), schemaVersion(source));
     }
 
     /**
@@ -410,24 +404,18 @@ public final class DataQueryService {
                                    boolean nullable) {
     }
 
-    /** One entity of a source's entity list. */
+    /**
+     * One entity of a source's entity list. The schema version (DR-008) travels
+     * on every descriptor instead of a new envelope, so the listing keeps its
+     * historical bare-array shape; all descriptors of one listing carry the
+     * same value, which also names the {@code X-Schema-Version} header.
+     */
     public record EntityDescriptor(String name, String kind, List<String> keyColumns,
-                                   List<ColumnDescriptor> columns) {
+                                   List<ColumnDescriptor> columns, String schemaVersion) {
 
         public EntityDescriptor {
             keyColumns = List.copyOf(keyColumns);
             columns = List.copyOf(columns);
-        }
-    }
-
-    /**
-     * The entity list of one source plus the schema version (DR-008) it was
-     * read from. The descriptors themselves are unchanged.
-     */
-    public record EntityListing(List<EntityDescriptor> entities, String schemaVersion) {
-
-        public EntityListing {
-            entities = List.copyOf(entities);
         }
     }
 

@@ -32,6 +32,7 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasItem;
+import static org.hamcrest.Matchers.matchesPattern;
 import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -70,28 +71,31 @@ class DataControllerTests {
 
     @Test
     void listsEntitiesWithNameKindKeyAndColumns() throws Exception {
-        // DR-008 moved the descriptors under "entities" and added "schemaVersion".
+        // The listing is still the bare array of descriptors (DA-007 shape).
+        // DR-008 only adds a "schemaVersion" field to every descriptor.
         mockMvc.perform(get("/api/data/orders"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.entities[?(@.name == 'CUSTOMERS')].name")
+                .andExpect(jsonPath("$[?(@.name == 'CUSTOMERS')].name")
                         .value(hasItem("CUSTOMERS")))
-                .andExpect(jsonPath("$.entities[?(@.name == 'CUSTOMERS')].kind")
+                .andExpect(jsonPath("$[?(@.name == 'CUSTOMERS')].kind")
                         .value(hasItem("table")))
-                .andExpect(jsonPath("$.entities[?(@.name == 'CUSTOMERS')].keyColumns[0]")
+                .andExpect(jsonPath("$[?(@.name == 'CUSTOMERS')].keyColumns[0]")
                         .value(hasItem("ID")))
-                .andExpect(jsonPath("$.entities[?(@.name == 'CUSTOMERS')]"
+                .andExpect(jsonPath("$[?(@.name == 'CUSTOMERS')]"
                                 + ".columns[?(@.name == 'ID')].type")
                         .value(hasItem("bigint")))
-                .andExpect(jsonPath("$.entities[?(@.name == 'CUSTOMERS')]"
+                .andExpect(jsonPath("$[?(@.name == 'CUSTOMERS')]"
                                 + ".columns[?(@.name == 'ID')].category")
                         .value(hasItem("NUMBER")))
-                .andExpect(jsonPath("$.entities[?(@.name == 'CUSTOMERS')]"
+                .andExpect(jsonPath("$[?(@.name == 'CUSTOMERS')]"
                                 + ".columns[?(@.name == 'ID')].nullable")
                         .value(hasItem(false)))
-                .andExpect(jsonPath("$.entities[?(@.name == 'CUSTOMERS')]"
+                .andExpect(jsonPath("$[?(@.name == 'CUSTOMERS')]"
                                 + ".columns[?(@.name == 'NAME')].nullable")
                         .value(hasItem(false)))
-                .andExpect(jsonPath("$.entities[?(@.name == 'CUSTOMER_NAMES')].kind")
+                .andExpect(jsonPath("$[?(@.name == 'CUSTOMERS')].schemaVersion")
+                        .value(hasItem(matchesPattern("[0-9a-f]{12}"))))
+                .andExpect(jsonPath("$[?(@.name == 'CUSTOMER_NAMES')].kind")
                         .value(hasItem("view")));
     }
 

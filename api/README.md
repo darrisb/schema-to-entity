@@ -161,7 +161,7 @@ Each source's schema is discovered once and cached as the typed query allowlist 
 
 ### Endpoints
 
-All endpoints are `GET` and return JSON. Every successful response carries an `X-Schema-Version` header naming the schema version its data was read from: the first 12 hex characters of the current snapshot fingerprint for the source, held alongside the cached schema so it is computed once per discovery rather than per request. It changes only when the cache starts serving a different structure (an expired `schema-cache-ttl` or a `SchemaCache.refresh`). The entity listing repeats the same value in its JSON body. Error responses carry no version, since nothing was served. Errors raised by the data API are returned as `{"error": "..."}` with the message passed through the secret redactor; unmapped methods or paths receive Spring's default error response.
+All endpoints are `GET` and return JSON. Every successful response carries an `X-Schema-Version` header naming the schema version its data was read from: the first 12 hex characters of the current snapshot fingerprint for the source, held alongside the cached schema so it is computed once per discovery rather than per request. It changes only when the cache starts serving a different structure (an expired `schema-cache-ttl` or a `SchemaCache.refresh`). Each entity descriptor in the listing repeats the same value as a `schemaVersion` field, so the listing's JSON shape is unchanged apart from that added field. Error responses carry no version, since nothing was served. Errors raised by the data API are returned as `{"error": "..."}` with the message passed through the secret redactor; unmapped methods or paths receive Spring's default error response.
 
 #### `GET /api/data/{source}` — list the entities of a source
 
@@ -169,26 +169,22 @@ All endpoints are `GET` and return JSON. Every successful response carries an `X
 curl http://localhost:8080/api/data/demo
 ```
 
-Returns a JSON object with the `schemaVersion` and an `entities` array of entity descriptors:
+Returns a JSON array of entity descriptors. Each descriptor carries the source's `schemaVersion` (the same value as the `X-Schema-Version` header); clients that parse the bare array keep working:
 
 ```json
-{
-  "schemaVersion": "1a2b3c4d5e6f",
-  "entities": [
-    {
-      "name": "CUSTOMERS",
-      "kind": "table",
-      "keyColumns": ["ID"],
-      "columns": [
-        { "name": "ID", "type": "bigint", "category": "NUMBER", "nullable": false },
-        { "name": "NAME", "type": "varchar(80)", "category": "TEXT", "nullable": false }
-      ]
-    }
-  ]
-}
+[
+  {
+    "name": "CUSTOMERS",
+    "kind": "table",
+    "keyColumns": ["ID"],
+    "columns": [
+      { "name": "ID", "type": "bigint", "category": "NUMBER", "nullable": false },
+      { "name": "NAME", "type": "varchar(80)", "category": "TEXT", "nullable": false }
+    ],
+    "schemaVersion": "1a2b3c4d5e6f"
+  }
+]
 ```
-
-**Breaking response-shape change (DR-008):** this endpoint previously returned the bare JSON array of entity descriptors; the array now travels under `entities` next to `schemaVersion`. Clients that parsed the top-level array must read `entities`. Nothing in this repository consumes the listing over HTTP (the demo application and the Angular UI never call `GET /api/data/{source}`), so no in-repo consumer needed updating; deployed external clients are affected and the new shape is recorded here as a deliberate breaking change.
 
 #### `GET /api/data/{source}/{entity}` — query a page of rows
 

@@ -43,8 +43,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * DR-008: every successful data response names the schema version it served,
- * as the X-Schema-Version header and (for the entity listing) as
- * {@code schemaVersion} in the JSON. The version is the leading characters of
+ * as the X-Schema-Version header and (for the entity listing) as a
+ * {@code schemaVersion} field on each entity descriptor, so the listing keeps
+ * its historical bare-array shape. The version is the leading characters of
  * the snapshot fingerprint of the cached schema, so it changes only when the
  * cache starts serving a different structure, and CORS exposes it to
  * browsers.
@@ -87,9 +88,11 @@ class SchemaVersionHeaderTests {
                 .andReturn();
         String version = listing.getResponse().getHeader(HEADER);
 
-        // The listing carries the same value in its JSON.
+        // The listing is still a bare array whose descriptors each carry the
+        // same value as the header (no response-shape change for old clients).
         mockMvc.perform(get("/api/data/orders"))
-                .andExpect(jsonPath("$.schemaVersion").value(version));
+                .andExpect(jsonPath("$[0].name").value("CUSTOMERS"))
+                .andExpect(jsonPath("$[0].schemaVersion").value(version));
 
         // The version is the fingerprint prefix the drift snapshot of the
         // cached schema produces, so it is the snapshot identity, not a hash
@@ -141,7 +144,7 @@ class SchemaVersionHeaderTests {
                 .andExpect(status().isOk())
                 .andExpect(header().string(HEADER,
                         after.fingerprint().substring(0, SchemaVersion.LENGTH)))
-                .andExpect(jsonPath("$.schemaVersion").value(after
+                .andExpect(jsonPath("$[0].schemaVersion").value(after
                         .fingerprint().substring(0, SchemaVersion.LENGTH)));
         mockMvc.perform(get("/api/data/orders/customers"))
                 .andExpect(header().string(HEADER,

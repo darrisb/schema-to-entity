@@ -32,8 +32,9 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
  * message passed through {@link SecretRedactor}.
  * <p>
  * DR-008: every successful response carries the {@value #SCHEMA_VERSION_HEADER}
- * header naming the schema version the data was read from, and the entity
- * listing repeats it in its JSON as {@code schemaVersion}. The version comes
+ * header naming the schema version the data was read from, and each entity
+ * descriptor in the listing repeats it as {@code schemaVersion}, so the
+ * listing keeps its historical bare-array response shape. The version comes
  * from the cached schema entry, so it costs nothing per request. Error
  * responses carry no version: nothing was served.
  */
@@ -66,13 +67,11 @@ public class DataController {
         this.queryService = queryService;
     }
 
-    /** Lists the entities discovered for a source, with their schema version. */
+    /** Lists the entities discovered for a source, each carrying its schema version. */
     @GetMapping("/{source}")
-    public ResponseEntity<DataQueryService.EntityListing> entities(@PathVariable String source) {
-        DataQueryService.EntityListing listing = queryService.listing(source);
-        return ResponseEntity.ok()
-                .header(SCHEMA_VERSION_HEADER, listing.schemaVersion())
-                .body(listing);
+    public ResponseEntity<List<DataQueryService.EntityDescriptor>> entities(
+            @PathVariable String source) {
+        return versioned(source, queryService.entities(source));
     }
 
     /** Returns one page of rows for an entity. */
