@@ -47,6 +47,15 @@ public class SchemaToEntityProperties {
      */
     private String snapshotDir = "./snapshots";
 
+    /** Off by default: storing visual UI page documents is opt-in. */
+    private boolean pagesEnabled = false;
+
+    /**
+     * Folder holding visual UI page documents and their short history. Page
+     * documents are JSON only; storing them never writes to a source database.
+     */
+    private String pagesDir = "./pages";
+
     /**
      * How often every source is checked for drift in the background. Unset (the
      * default) schedules nothing: drift is then only checked when a caller asks.
@@ -178,6 +187,22 @@ public class SchemaToEntityProperties {
 
     public void setSnapshotDir(String snapshotDir) {
         this.snapshotDir = snapshotDir;
+    }
+
+    public boolean isPagesEnabled() {
+        return pagesEnabled;
+    }
+
+    public void setPagesEnabled(boolean pagesEnabled) {
+        this.pagesEnabled = pagesEnabled;
+    }
+
+    public String getPagesDir() {
+        return pagesDir;
+    }
+
+    public void setPagesDir(String pagesDir) {
+        this.pagesDir = pagesDir;
     }
 
     public Duration getDriftCheckInterval() {
