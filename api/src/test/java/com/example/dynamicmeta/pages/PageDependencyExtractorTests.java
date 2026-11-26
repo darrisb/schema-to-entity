@@ -66,4 +66,52 @@ class PageDependencyExtractorTests {
                 new PageUsage("nested", "data-source", "crm:contacts", null));
         assertThat(result.schemaVersions()).isEmpty();
     }
+
+    @Test
+    void returnsEmptyForNullAndNonArrayDocuments() throws Exception {
+        assertThat(extractor.extract(null).usages()).isEmpty();
+        assertThat(extractor.extract(mapper.readTree("{\"id\":\"component\"}")).usages())
+                .isEmpty();
+    }
+
+    @Test
+    void ignoresNonRestAndUnexpectedDataSourceShapes() throws Exception {
+        JsonNode document = mapper.readTree("""
+                [{"id":"static","dataSource":{"type":"static","url":"/api/data/crm/customers"}},
+                 {"id":"sql","dataSource":{"type":"sql","url":"/api/data/crm/customers"}},
+                 {"id":"missing-type","dataSource":{"url":"/api/data/crm/customers"}},
+                 {"id":"text","dataSource":"rest"},
+                 {"id":"array","dataSource":[]}]
+                """);
+
+        assertThat(extractor.extract(document).usages()).isEmpty();
+    }
+
+    @Test
+    void toleratesMalformedNestedValuesAndInvalidUrls() throws Exception {
+        JsonNode document = mapper.readTree("""
+                [{"id":"bad-mapping","dataSource":{"type":"rest","url":"/api/data/crm/customers",
+                    "mapping":"id","query":[]}},
+                 {"id":"bad-query","dataSource":{"type":"rest","url":"/api/data/crm/orders",
+                    "mapping":[],"query":{"sort":42}}},
+                 {"id":"bad-url","dataSource":{"type":"rest","url":"http://[invalid"}},
+                 {"id":"bad-entity","dataSource":{"type":"rest","url":"/api/data/crm/v2.customers"}}]
+                """);
+
+        assertThat(extractor.extract(document).usages()).containsExactly(
+                new PageUsage("bad-mapping", "data-source", "crm:customers", null),
+                new PageUsage("bad-query", "data-source", "crm:orders", null));
+    }
+
+    @Test
+    void walksChildrenAtAnyDepth() throws Exception {
+        JsonNode document = mapper.readTree("""
+                [{"id":"outer","children":[{"id":"middle","children":[
+                  {"id":"deep","dataSource":{"type":"rest","url":"/api/data/crm/contacts"}}
+                ]}]}]
+                """);
+
+        assertThat(extractor.extract(document).usages()).containsExactly(
+                new PageUsage("deep", "data-source", "crm:contacts", null));
+    }
 }
