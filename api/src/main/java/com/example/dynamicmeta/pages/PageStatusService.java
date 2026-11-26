@@ -1,7 +1,10 @@
 package com.example.dynamicmeta.pages;
 
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 import com.example.dynamicmeta.data.ColumnModel;
@@ -23,6 +26,16 @@ public final class PageStatusService {
     }
 
     public PageStatus status(Page page) {
+        return status(page, new LinkedHashMap<>());
+    }
+
+    /** Evaluates a page list while resolving each distinct source only once. */
+    public List<PageStatus> statuses(List<Page> pages) {
+        Map<String, ResolvedSource> resolvedSources = new LinkedHashMap<>();
+        return pages.stream().map(page -> status(page, resolvedSources)).toList();
+    }
+
+    private PageStatus status(Page page, Map<String, ResolvedSource> resolvedSources) {
         PageDependencies dependencies = dependencyExtractor.extract(page.document());
         Set<String> missingEntities = new LinkedHashSet<>();
         Set<String> missingColumns = new LinkedHashSet<>();
@@ -38,11 +51,16 @@ public final class PageStatusService {
 
         try {
             for (String source : sources) {
-                SourceSchema schema = schemaCache.get(source);
-                inspectEntities(source, schema, dependencies, missingEntities, missingColumns);
+                ResolvedSource resolved = resolvedSources.computeIfAbsent(
+                        source.toLowerCase(Locale.ROOT), ignored -> resolve(source));
+                if (resolved.failure() != null) {
+                    return unavailable(page.id());
+                }
+                inspectEntities(source, resolved.schema(), dependencies,
+                        missingEntities, missingColumns);
                 String recorded = dependencies.schemaVersions().get(source);
                 if (recorded != null
-                        && !recorded.equalsIgnoreCase(schemaCache.schemaVersion(source))) {
+                        && !recorded.equalsIgnoreCase(resolved.version())) {
                     staleSources.add(source);
                 }
             }
@@ -54,6 +72,15 @@ public final class PageStatusService {
         String state = !missingEntities.isEmpty() || !missingColumns.isEmpty()
                 ? "broken" : staleSources.isEmpty() ? "ok" : "stale";
         return new PageStatus(page.id(), state, missingEntities, missingColumns, staleSources);
+    }
+
+    private ResolvedSource resolve(String source) {
+        try {
+            SourceSchema schema = schemaCache.get(source);
+            return new ResolvedSource(schema, schemaCache.schemaVersion(source), null);
+        } catch (RuntimeException failure) {
+            return new ResolvedSource(null, null, failure);
+        }
     }
 
     private static void inspectEntities(String source, SourceSchema schema,
@@ -86,5 +113,8 @@ public final class PageStatusService {
 
     private static PageStatus unavailable(String pageId) {
         return new PageStatus(pageId, "unavailable", Set.of(), Set.of(), Set.of());
+    }
+
+    private record ResolvedSource(SourceSchema schema, String version, RuntimeException failure) {
     }
 }

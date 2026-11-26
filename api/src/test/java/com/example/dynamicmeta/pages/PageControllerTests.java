@@ -74,7 +74,24 @@ class PageControllerTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].id").value("sales-page"))
                 .andExpect(jsonPath("$[0].name").value("Test page"))
-                .andExpect(jsonPath("$[0].entities[0]").value("sales:orders"));
+                .andExpect(jsonPath("$[0].entities[0]").value("sales:orders"))
+                .andExpect(jsonPath("$[0].status.pageId").value("sales-page"))
+                .andExpect(jsonPath("$[0].status.state").value("unavailable"));
+    }
+
+    @Test
+    void statusReturnsPageStatusAndUnknownPageIs404() throws Exception {
+        putPage("sales-page", """
+                [{"dataSource":{"type":"rest","url":"/api/data/sales/orders"}}]
+                """);
+
+        mockMvc.perform(get("/api/pages/sales-page/status"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.pageId").value("sales-page"))
+                .andExpect(jsonPath("$.state").value("unavailable"));
+        mockMvc.perform(get("/api/pages/missing/status"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("Unknown page: missing"));
     }
 
     @Test

@@ -15,6 +15,8 @@ import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class PageStatusServiceTests {
@@ -56,6 +58,42 @@ class PageStatusServiceTests {
 
         assertThat(status.state()).isEqualTo("stale");
         assertThat(status.staleSources()).containsExactly("crm");
+    }
+
+    @Test
+    void missingEntityIsBrokenAndBrokenTakesPrecedenceOverStale() throws Exception {
+        SchemaCache cache = mock(SchemaCache.class);
+        when(cache.get("crm")).thenReturn(new SourceSchema(
+                "h2", null, "PUBLIC", Map.of()));
+        when(cache.schemaVersion("crm")).thenReturn("new-version");
+        Page page = page("""
+                [{"dataSource":{"type":"rest","url":"/api/data/crm/customers",
+                  "schemaVersion":"old-version"}}]
+                """);
+
+        PageStatus status = new PageStatusService(cache, extractor).status(page);
+
+        assertThat(status.state()).isEqualTo("broken");
+        assertThat(status.missingEntities()).containsExactly("crm:customers");
+        assertThat(status.staleSources()).containsExactly("crm");
+    }
+
+    @Test
+    void pageListResolvesFailingSourceOnlyOnce() throws Exception {
+        SchemaCache cache = mock(SchemaCache.class);
+        when(cache.get("crm")).thenThrow(new IllegalStateException("unreachable"));
+        Page first = page("""
+                [{"dataSource":{"type":"rest","url":"/api/data/crm/customers"}}]
+                """);
+        Page second = new Page("second-page", "Second", null,
+                first.document(), null, null);
+
+        List<PageStatus> statuses = new PageStatusService(cache, extractor)
+                .statuses(List.of(first, second));
+
+        assertThat(statuses).extracting(PageStatus::state)
+                .containsExactly("unavailable", "unavailable");
+        verify(cache, times(1)).get("crm");
     }
 
     @Test

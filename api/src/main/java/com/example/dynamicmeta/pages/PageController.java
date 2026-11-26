@@ -43,10 +43,15 @@ public final class PageController {
 
     @GetMapping
     public List<PageSummary> list() {
-        return store.list().stream()
-                .map(page -> new PageSummary(page.id(), page.name(), page.description(),
-                        page.updatedAt(), dependencyExtractor.extract(page.document()).entities(),
-                        statusService.status(page)))
+        List<Page> pages = store.list();
+        List<PageStatus> statuses = statusService.statuses(pages);
+        return java.util.stream.IntStream.range(0, pages.size())
+                .mapToObj(index -> {
+                    Page page = pages.get(index);
+                    return new PageSummary(page.id(), page.name(), page.description(),
+                            page.updatedAt(), dependencyExtractor.extract(page.document()).entities(),
+                            statuses.get(index));
+                })
                 .toList();
     }
 
