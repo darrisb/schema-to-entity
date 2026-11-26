@@ -32,11 +32,12 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>These tests read {@code api/README.md} and check that the documented
  * drift endpoint paths are the ones {@link DriftController} actually maps, that
- * every field name in the documented JSON examples is an actual record
- * component, that the documented statuses, change types, severities, rename
- * thresholds and configuration keys match the code, and that the two statements
- * that bound what drift does — it is one-way, and hidden columns and inferred
- * relationships are not drift — are written down.
+ * every field name in the documented JSON examples and in the tables that
+ * describe them is an actual record component, that the documented statuses,
+ * change types, severities, rename thresholds and configuration keys are exactly
+ * the ones the code has, and that the two statements that bound what drift does
+ * — it is one-way, and hidden columns and inferred relationships are not drift —
+ * are written down.
  */
 class DriftDocsTests {
 
@@ -175,19 +176,36 @@ class DriftDocsTests {
     }
 
     @Test
+    void theDocumentedFieldTablesUseTheRealRecordComponents() {
+        String drift = driftSection();
+        // The two tables say what a report and an impact entry carry. They are
+        // checked exactly against the records, so a field renamed in code, or
+        // spelled differently in the table, fails here and not only in the
+        // example, where every name is already present.
+        assertThat(tableFirstColumn(drift, "Field | Meaning"))
+                .as("DriftReport fields in the field table")
+                .containsExactlyInAnyOrderElementsOf(componentNames(DriftReport.class));
+        assertThat(tableFirstColumn(drift, "Field | Holds"))
+                .as("ChangeImpact fields in the impact table")
+                .containsExactlyInAnyOrderElementsOf(componentNames(ChangeImpact.class));
+    }
+
+    @Test
     void documentsEveryStatusTypeAndSeverity() {
         String drift = driftSection();
-        for (DriftReport.Status status : DriftReport.Status.values()) {
-            assertThat(drift)
-                    .as("status %s", status)
-                    .contains(status.wireName());
-        }
-        for (SchemaChange.Type type : SchemaChange.Type.values()) {
-            assertThat(drift).as("change type %s", type).contains(type.name());
-        }
-        for (SchemaChange.Severity severity : SchemaChange.Severity.values()) {
-            assertThat(drift).as("severity %s", severity).contains(severity.name());
-        }
+        // The tables that document the vocabulary are compared exactly: a name
+        // the enums do not have fails here even though the same word appears in
+        // the prose and in the JSON example, and a name the enums do have may
+        // not be left out of the table the reader is told to consult.
+        assertThat(tableFirstColumn(drift, "`status` | When"))
+                .as("statuses in the status table")
+                .containsExactlyInAnyOrderElementsOf(enumerationNames(DriftReport.Status.class));
+        assertThat(tableFirstColumn(drift, "Type | Severity"))
+                .as("change types in the type table")
+                .containsExactlyInAnyOrderElementsOf(enumerationNames(SchemaChange.Type.class));
+        assertThat(tableFirstColumn(drift, "Severity | Meaning"))
+                .as("severities in the severity table")
+                .containsExactlyInAnyOrderElementsOf(enumerationNames(SchemaChange.Severity.class));
 
         // The rename thresholds are the ones the diff uses.
         assertThat(SnapshotDiff.NAME_SIMILARITY_THRESHOLD).isEqualTo(0.6);
@@ -357,6 +375,36 @@ class DriftDocsTests {
         }
         assertThat(urls).as("the drift section has curl examples").isNotEmpty();
         return urls;
+    }
+
+    /**
+     * The first column of the table whose header row starts with {@code header}
+     * (its first two cells, so the table is named and not guessed), back quotes
+     * stripped. Empty when the README has no such table.
+     */
+    private static List<String> tableFirstColumn(String section, String header) {
+        List<String> cells = new ArrayList<>();
+        boolean inTable = false;
+        for (String line : section.split("\n")) {
+            String row = line.strip();
+            if (!row.startsWith("|")) {
+                // A blank or prose line ends the table we are reading.
+                if (inTable) {
+                    break;
+                }
+                continue;
+            }
+            if (!inTable) {
+                inTable = row.startsWith("| " + header + " |");
+                continue;
+            }
+            String cell = row.substring(1, row.indexOf('|', 1)).strip();
+            if (!cell.matches("-+")) {
+                cells.add(cell.replace("`", ""));
+            }
+        }
+        assertThat(cells).as("the README's '%s' table", header).isNotEmpty();
+        return cells;
     }
 
     /** The keys of the JSON body in the first curl example after a heading. */
