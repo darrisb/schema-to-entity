@@ -319,12 +319,42 @@ public final class SnapshotDiff {
             // and removed. An empty name cannot be compared by shape.
             return false;
         }
-        if (before.contains(after) || after.contains(before)) {
+        if (containsAsWord(before, after) || containsAsWord(after, before)) {
             return true;
         }
         int longer = Math.max(before.length(), after.length());
         double similarity = 1.0 - (double) editDistance(before, after) / longer;
         return similarity >= NAME_SIMILARITY_THRESHOLD;
+    }
+
+    /** Shortest name that may count as contained in another (see containsAsWord). */
+    static final int MIN_CONTAINED_LENGTH = 3;
+
+    /**
+     * True when {@code part} appears in {@code whole} as a whole word: bounded by
+     * the start or end of the name or by an underscore (email in email_address,
+     * id in customer_id). Very short names and matches inside a word (a in
+     * created_at, name in username) do not count; those pairs still get the
+     * edit-distance check.
+     */
+    static boolean containsAsWord(String whole, String part) {
+        if (part.length() < MIN_CONTAINED_LENGTH || part.length() >= whole.length()) {
+            return false;
+        }
+        int from = 0;
+        while (true) {
+            int at = whole.indexOf(part, from);
+            if (at < 0) {
+                return false;
+            }
+            int end = at + part.length();
+            boolean startsWord = at == 0 || whole.charAt(at - 1) == '_';
+            boolean endsWord = end == whole.length() || whole.charAt(end) == '_';
+            if (startsWord && endsWord) {
+                return true;
+            }
+            from = at + 1;
+        }
     }
 
     /** Standard Levenshtein distance between two lower-cased names. */

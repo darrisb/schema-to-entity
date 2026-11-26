@@ -370,6 +370,28 @@ class SnapshotDiffTests {
     }
 
     @Test
+    void containmentOnlyCountsForWholeWordsOfThreeOrMoreCharacters() {
+        // "a" sits inside "created_at" and "name" inside "username", but neither
+        // is a whole word there, so neither pair is a rename candidate.
+        for (String[] pair : new String[][] {{"a", "created_at"}, {"name", "username"}}) {
+            List<SchemaChange> changes = SnapshotDiff.diff(
+                    snapshot(entity("things", List.of(column(pair[0], "bigint", true)),
+                            List.of(), List.of())),
+                    snapshot(entity("things", List.of(column(pair[1], "bigint", true)),
+                            List.of(), List.of())));
+
+            assertThat(changes).as(pair[0] + " -> " + pair[1])
+                    .extracting(SchemaChange::type)
+                    .doesNotContain(Type.COLUMN_RENAME_CANDIDATE);
+        }
+        // A whole word at either end of the longer name still counts.
+        assertThat(SnapshotDiff.containsAsWord("customer_id", "customer")).isTrue();
+        assertThat(SnapshotDiff.containsAsWord("email_address", "email")).isTrue();
+        assertThat(SnapshotDiff.containsAsWord("created_at", "a")).isFalse();
+        assertThat(SnapshotDiff.containsAsWord("username", "name")).isFalse();
+    }
+
+    @Test
     void aColumnOfAnotherTypeIsNotARenameCandidate() {
         List<SchemaChange> changes = SnapshotDiff.diff(
                 snapshot(entity("users", List.of(column("email", "varchar(120)", true)),
