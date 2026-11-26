@@ -60,7 +60,9 @@ schema-to-entity:
   # Origins allowed to call the read-only data API from a browser. This covers
   # /api/data/** only. Add the deployed UI origin for production.
   data-allowed-origins:
-    - http://localhost:4200
+    - http://localhost:4200   # Angular UI dev server
+    - http://localhost:8080   # Angular UI container (docker compose)
+    - http://localhost:5173   # UI library examples (Vite dev server)
   sources:
     demo:
       # Defaults target the compose Postgres on the host port; Docker sets
