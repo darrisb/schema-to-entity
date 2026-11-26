@@ -57,6 +57,13 @@ public class SchemaToEntityProperties {
     private String pagesDir = "./pages";
 
     /**
+     * Origins allowed to manage page documents from a browser. Empty (the
+     * default) sends no CORS headers. This is deliberately separate from the
+     * read-only data API origin list because page endpoints accept writes.
+     */
+    private List<String> pageAllowedOrigins = List.of();
+
+    /**
      * How often every source is checked for drift in the background. Unset (the
      * default) schedules nothing: drift is then only checked when a caller asks.
      * A check only reads metadata and may write baseline snapshots, never a
@@ -203,6 +210,14 @@ public class SchemaToEntityProperties {
 
     public void setPagesDir(String pagesDir) {
         this.pagesDir = pagesDir;
+    }
+
+    public List<String> getPageAllowedOrigins() {
+        return pageAllowedOrigins;
+    }
+
+    public void setPageAllowedOrigins(List<String> pageAllowedOrigins) {
+        this.pageAllowedOrigins = pageAllowedOrigins;
     }
 
     public Duration getDriftCheckInterval() {

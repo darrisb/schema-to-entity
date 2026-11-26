@@ -34,6 +34,7 @@ import com.example.dynamicmeta.graph.GraphController;
 import com.example.dynamicmeta.graph.OverlayStore;
 import com.example.dynamicmeta.graph.SchemaGraphBuilder;
 import com.example.dynamicmeta.pages.PageController;
+import com.example.dynamicmeta.pages.PageCorsConfiguration;
 import com.example.dynamicmeta.pages.PageDependencyExtractor;
 import com.example.dynamicmeta.pages.PageStore;
 
@@ -164,7 +165,7 @@ public class SchemaToEntityAutoConfiguration {
             return new DataCorsConfiguration(properties);
         }
 
-        /** Page documents are opt-in admin data and receive no browser CORS mapping. */
+        /** Page documents and their independently scoped browser access are opt-in. */
         @Configuration(proxyBeanMethods = false)
         @ConditionalOnProperty(prefix = "schema-to-entity", name = "pages-enabled",
                 havingValue = "true")
@@ -187,6 +188,12 @@ public class SchemaToEntityAutoConfiguration {
             PageController pageController(PageStore pageStore,
                     PageDependencyExtractor pageDependencyExtractor) {
                 return new PageController(pageStore, pageDependencyExtractor);
+            }
+
+            @Bean
+            @ConditionalOnMissingBean
+            PageCorsConfiguration pageCorsConfiguration(SchemaToEntityProperties properties) {
+                return new PageCorsConfiguration(properties);
             }
         }
 
