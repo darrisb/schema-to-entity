@@ -166,6 +166,14 @@ public final class SnapshotStore {
         try {
             return Optional.of(mapper.readValue(file.toFile(), SchemaSnapshot.class));
         } catch (FileNotFoundException | NoSuchFileException missing) {
+            if (Files.exists(file)) {
+                // Opening an existing file fails the same way: permission
+                // denied, or the path being a directory. That is a baseline
+                // this store cannot read, so it is reported and left alone
+                // rather than treated as no baseline and archived over.
+                throw new IllegalStateException("snapshot file " + file
+                        + " is not a readable baseline: " + missing.getMessage(), missing);
+            }
             // The file vanished between the existence check and this read;
             // that is the missing-baseline case, not a broken file.
             return Optional.empty();

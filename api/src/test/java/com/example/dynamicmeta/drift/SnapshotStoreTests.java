@@ -18,13 +18,15 @@ import org.junit.jupiter.api.io.TempDir;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * DR-002: the snapshot store keeps one accepted baseline JSON file per source
  * in a folder — read back empty when missing, written atomically, superseded
  * baselines archived under {@code history/<source>/} with only the newest ten
- * kept, unsafe source names refused, and a malformed file reported by name and
- * left alone. These tests write only into a temporary folder; nothing
+ * kept, unsafe source names refused, and a malformed or unopenable file (one
+ * this user may not read, or a directory in the baseline's place) reported by
+ * name and left alone. These tests write only into a temporary folder; nothing
  * connects to a database.
  */
 class SnapshotStoreTests {
@@ -158,7 +160,7 @@ class SnapshotStoreTests {
     }
 
     // ------------------------------------------------------------------
-    // Malformed files
+    // Malformed and unreadable files
     // ------------------------------------------------------------------
 
     @Test
@@ -186,6 +188,54 @@ class SnapshotStoreTests {
         assertThat(file).exists();
         assertThat(Files.readString(file)).isEqualTo("{ this is not a snapshot ");
         assertThat(tempDir.resolve("history")).doesNotExist();
+    }
+
+    @Test
+    void anUnreadableBaselineFailsAndIsNeverArchivedOrReplaced() throws IOException {
+        SnapshotStore store = new SnapshotStore(tempDir);
+        SchemaSnapshot first = snapshot("shop", T1);
+        store.saveBaseline(first);
+
+        Path file = tempDir.resolve("shop.json");
+        boolean blocked = file.toFile().setReadable(false);
+        // Running as root, or on a filesystem without permissions, cannot hide
+        // the file from this process; the directory test below covers that.
+        assumeTrue(blocked && !Files.isReadable(file),
+                "this user can read the file whatever its permissions are");
+        try {
+            assertThatThrownBy(() -> store.baseline("shop"))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("shop.json");
+            assertThatThrownBy(() -> store.saveBaseline(snapshot("shop", T1.plusSeconds(60))))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("shop.json");
+            assertThat(tempDir.resolve("history")).doesNotExist();
+        } finally {
+            file.toFile().setReadable(true);
+        }
+        // The accepted baseline survived the refused save.
+        assertThat(store.baseline("shop")).contains(first);
+    }
+
+    @Test
+    void aDirectoryInTheBaselinesPlaceFailsAndIsLeftInPlace() throws IOException {
+        Path file = tempDir.resolve("shop.json");
+        Files.createDirectories(file);
+        SnapshotStore store = new SnapshotStore(tempDir);
+
+        assertThatThrownBy(() -> store.baseline("shop"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("shop.json");
+        assertThatThrownBy(() -> store.saveBaseline(snapshot("shop", T1)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("shop.json");
+
+        assertThat(file).isDirectory();
+        assertThat(tempDir.resolve("history")).doesNotExist();
+        try (Stream<Path> left = Files.list(tempDir)) {
+            assertThat(left.filter(p -> p.getFileName().toString().endsWith(".tmp")))
+                    .isEmpty();
+        }
     }
 
     // ------------------------------------------------------------------
