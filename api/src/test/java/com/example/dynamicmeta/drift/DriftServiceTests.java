@@ -29,6 +29,9 @@ import com.example.dynamicmeta.data.SchemaCache;
 import com.example.dynamicmeta.data.SourceNotFoundException;
 import com.example.dynamicmeta.data.SourceRegistry;
 import com.example.dynamicmeta.graph.OverlayStore;
+import com.example.dynamicmeta.pages.Page;
+import com.example.dynamicmeta.pages.PageDependencyExtractor;
+import com.example.dynamicmeta.pages.PageStore;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.h2.jdbcx.JdbcDataSource;
@@ -135,6 +138,7 @@ class DriftServiceTests {
         assertThat(changed.impact()).singleElement().satisfies(impact -> {
             assertThat(impact.change()).isEqualTo(changed.changes().getFirst());
             assertThat(impact.isEmpty()).isTrue();
+            assertThat(impact.pages()).isEmpty();
         });
         assertThat(changed.error()).isNull();
         assertThat(changed.changes()).singleElement().satisfies(added -> {
@@ -153,6 +157,34 @@ class DriftServiceTests {
                 .contains(baseline.currentFingerprint());
 
         fixture.registry().destroy();
+    }
+
+    @Test
+    void aRemovedColumnUsedByASavedPageIsReportedByTheService() throws Exception {
+        seed("ste_drift_page_impact",
+                "create table orders (id bigint primary key, total decimal(10,2))");
+        SourceRegistry registry = registry(Map.of("shop", h2Source("ste_drift_page_impact")));
+        SchemaCache cache = new SchemaCache(registry, discovery(),
+                new SchemaToEntityProperties());
+        SnapshotStore store = new SnapshotStore(snapshotDir);
+        PageStore pageStore = new PageStore(snapshotDir.resolve("pages"));
+        pageStore.save(new Page("orders-page", "Orders", null,
+                new ObjectMapper().readTree("""
+                        [{"id":"orders-table","type":"table","dataSource":{
+                          "type":"rest","url":"/api/data/shop/orders",
+                          "query":{"fields":"id,total"}}}]
+                        """), null, null));
+        DriftService service = new DriftService(registry, cache, new SnapshotBuilder(), store,
+                new OverlayStore(snapshotDir.resolve("overlay.json")), pageStore,
+                new PageDependencyExtractor(), Clock.systemUTC());
+        service.check("shop");
+
+        seed("ste_drift_page_impact", "alter table orders drop column total");
+        DriftReport changed = service.check("shop");
+
+        assertThat(impactOf(changed, SchemaChange.Type.COLUMN_REMOVED).pages())
+                .containsExactly(new PageImpact("orders-page", List.of("orders-table")));
+        registry.destroy();
     }
 
     @Test

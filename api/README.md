@@ -550,8 +550,9 @@ A `changed` report carries one `ChangeImpact` per change, in the same order, nam
 | `decisions` | relationship ids the overlay has a `confirmed` or `rejected` decision for |
 | `manualRelationships` | relationship ids a person asserted by hand over this entity or column |
 | `foreignKeys` | the baseline's declared foreign keys, as relationship ids, with this column or entity at either end |
+| `pages` | saved page ids and the component ids in each page that use this entity or column |
 
-Ids are spelled exactly as in the graph document and the overlay file (`demo:users`, `demo:users.user_name`, `demo:posts.author_id->demo:users.id`), so anything listed here is something the reviewer can look up and edit. Matching is case-insensitive and scoped to the source the baseline names, so a change in one source never reports the identically named table of another. An entity-level change owns the entity id and everything below it (its columns among them); a column change owns exactly its own column id — dropping a column does not report the label of its table, because the table is still there. Relationship ids are checked on both sides of `->`. A change nothing refers to still gets an entry, with empty lists; `impact` always lines up with `changes` by position. Reporting impact only **reads** the overlay — it changes nothing.
+Ids are spelled exactly as in the graph document and the overlay file (`demo:users`, `demo:users.user_name`, `demo:posts.author_id->demo:users.id`), so anything listed here is something the reviewer can look up and edit. Matching is case-insensitive and scoped to the source the baseline names, so a change in one source never reports the identically named table of another. An entity-level change owns the entity id and everything below it (its columns among them); a column change owns exactly its own column id — dropping a column does not report the label of its table, because the table is still there. Relationship ids are checked on both sides of `->`. When saved pages are enabled, `pages` identifies each affected page and the components within it; otherwise that list is empty. A change nothing refers to still gets an entry, with empty lists; `impact` always lines up with `changes` by position. Reporting impact only **reads** the overlay and saved pages — it changes nothing.
 
 ### What is *not* drift
 
@@ -606,16 +607,18 @@ The remembered report, or a fresh check when the source has none or when `check=
     { "change": { "type": "FOREIGN_KEY_REMOVED", "severity": "BREAKING", "entity": "posts", "column": "author_id",
                    "before": "users.id", "after": null, "relatedTo": null },
       "labels": [], "decisions": ["demo:posts.author_id->demo:users.id"],
-      "manualRelationships": [], "foreignKeys": ["demo:posts.author_id->demo:users.id"] },
+      "manualRelationships": [], "foreignKeys": ["demo:posts.author_id->demo:users.id"], "pages": [] },
     { "change": { "type": "COLUMN_REMOVED", "severity": "BREAKING", "entity": "users", "column": "user_name",
                    "before": "varchar(40) nullable", "after": null, "relatedTo": null },
-      "labels": ["demo:users.user_name"], "decisions": [], "manualRelationships": [], "foreignKeys": [] },
+      "labels": ["demo:users.user_name"], "decisions": [], "manualRelationships": [], "foreignKeys": [],
+      "pages": [{ "pageId": "customer-admin", "componentIds": ["users-table"] }] },
     { "change": { "type": "COLUMN_RENAME_CANDIDATE", "severity": "REVIEW", "entity": "users", "column": "user_name",
                    "before": "varchar(40) nullable", "after": "varchar(40) nullable", "relatedTo": "username" },
-      "labels": ["demo:users.user_name"], "decisions": [], "manualRelationships": [], "foreignKeys": [] },
+      "labels": ["demo:users.user_name"], "decisions": [], "manualRelationships": [], "foreignKeys": [],
+      "pages": [{ "pageId": "customer-admin", "componentIds": ["users-table"] }] },
     { "change": { "type": "COLUMN_ADDED", "severity": "ADDITIVE", "entity": "users", "column": "username",
                    "before": null, "after": "varchar(40) nullable", "relatedTo": null },
-      "labels": [], "decisions": [], "manualRelationships": [], "foreignKeys": [] }
+      "labels": [], "decisions": [], "manualRelationships": [], "foreignKeys": [], "pages": [] }
   ],
   "error": null
 }
