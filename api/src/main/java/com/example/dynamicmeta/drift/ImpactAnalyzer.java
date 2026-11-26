@@ -10,6 +10,9 @@ import com.example.dynamicmeta.drift.SchemaSnapshot.SnapshotEntity;
 import com.example.dynamicmeta.drift.SchemaSnapshot.SnapshotForeignKey;
 import com.example.dynamicmeta.graph.GraphIds;
 import com.example.dynamicmeta.graph.Overlay;
+import com.example.dynamicmeta.pages.Page;
+import com.example.dynamicmeta.pages.PageDependencies;
+import com.example.dynamicmeta.pages.PageDependencyExtractor;
 
 /**
  * Works out what each {@link SchemaChange} of a drift check affects, by looking
@@ -81,15 +84,23 @@ public final class ImpactAnalyzer {
      */
     public static List<ChangeImpact> analyze(SchemaSnapshot baseline, Overlay overlay,
                                              List<SchemaChange> changes) {
+        return analyze(baseline, overlay, changes, List.of(), null);
+    }
+
+    /** Analyzes changes including references from the supplied saved pages. */
+    public static List<ChangeImpact> analyze(SchemaSnapshot baseline, Overlay overlay,
+                                             List<SchemaChange> changes, List<Page> pages,
+                                             PageDependencyExtractor extractor) {
         Objects.requireNonNull(baseline, "baseline");
         Objects.requireNonNull(overlay, "overlay");
         Objects.requireNonNull(changes, "changes");
+        Objects.requireNonNull(pages, "pages");
 
         String source = baseline.source();
         List<String> foreignKeys = foreignKeyIds(baseline);
         List<ChangeImpact> impacts = new ArrayList<>(changes.size());
         for (SchemaChange change : changes) {
-            impacts.add(impactOf(source, overlay, change, foreignKeys));
+            impacts.add(impactOf(source, overlay, change, foreignKeys, pages, extractor));
         }
         return List.copyOf(impacts);
     }
@@ -105,12 +116,14 @@ public final class ImpactAnalyzer {
     public static ChangeImpact impactOf(SchemaSnapshot baseline, Overlay overlay,
                                         SchemaChange change) {
         Objects.requireNonNull(baseline, "baseline");
-        return impactOf(baseline.source(), overlay, change, foreignKeyIds(baseline));
+        return impactOf(baseline.source(), overlay, change, foreignKeyIds(baseline),
+                List.of(), null);
     }
 
     /** The impact of one change, over the foreign key ids of its baseline. */
     private static ChangeImpact impactOf(String source, Overlay overlay, SchemaChange change,
-                                         List<String> foreignKeys) {
+                                         List<String> foreignKeys, List<Page> pages,
+                                         PageDependencyExtractor extractor) {
         Objects.requireNonNull(overlay, "overlay");
         Objects.requireNonNull(change, "change");
 
@@ -119,7 +132,25 @@ public final class ImpactAnalyzer {
                 referring(targets, overlay.labels().keySet()),
                 referring(targets, overlay.relationshipDecisions().keySet()),
                 referring(targets, manualRelationshipIds(overlay)),
-                referring(targets, foreignKeys));
+                referring(targets, foreignKeys), pageImpacts(targets, pages, extractor));
+    }
+
+    private static List<PageImpact> pageImpacts(Targets targets, List<Page> pages,
+                                                PageDependencyExtractor extractor) {
+        if (extractor == null || pages.isEmpty()) {
+            return List.of();
+        }
+        List<PageImpact> impacts = new ArrayList<>();
+        for (Page page : pages) {
+            PageDependencies dependencies = extractor.extract(page.document());
+            String schemaId = targets.columnId() == null
+                    ? targets.entityId() : targets.columnId();
+            List<String> components = dependencies.usagesOf(schemaId).stream().sorted().toList();
+            if (!components.isEmpty()) {
+                impacts.add(new PageImpact(page.id(), components));
+            }
+        }
+        return impacts;
     }
 
     /**

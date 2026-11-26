@@ -21,9 +21,11 @@ import java.util.TreeSet;
  *       hand over this entity or column.</li>
  *   <li>{@link #foreignKeys()} — the baseline's declared foreign keys, as
  *       relationship ids, that have this column or entity at either end.</li>
+ *   <li>{@link #pages()} — saved pages and component ids that use the changed
+ *       entity or column.</li>
  * </ul>
  * A list is empty when the change touches nothing of that kind; {@link #isEmpty()}
- * says when all four are. Nothing here is a judgment about whether the change is
+ * says when all five are. Nothing here is a judgment about whether the change is
  * safe to accept: it is only what refers to it.
  * <p>
  * Built by {@link ImpactAnalyzer}. This is a value object only: nothing in it
@@ -35,9 +37,17 @@ import java.util.TreeSet;
  * @param decisions          overlay relationship-decision ids referring to it
  * @param manualRelationships overlay manual relationship ids referring to it
  * @param foreignKeys        baseline foreign keys, as relationship ids, that use it
+ * @param pages              saved pages and components that use it
  */
 public record ChangeImpact(SchemaChange change, List<String> labels, List<String> decisions,
-                           List<String> manualRelationships, List<String> foreignKeys) {
+                           List<String> manualRelationships, List<String> foreignKeys,
+                           List<PageImpact> pages) {
+
+    /** Backwards-compatible form for callers that do not analyze saved pages. */
+    public ChangeImpact(SchemaChange change, List<String> labels, List<String> decisions,
+                        List<String> manualRelationships, List<String> foreignKeys) {
+        this(change, labels, decisions, manualRelationships, foreignKeys, List.of());
+    }
 
     public ChangeImpact {
         change = Objects.requireNonNull(change, "change");
@@ -45,20 +55,27 @@ public record ChangeImpact(SchemaChange change, List<String> labels, List<String
         decisions = normalized(decisions, "decisions");
         manualRelationships = normalized(manualRelationships, "manualRelationships");
         foreignKeys = normalized(foreignKeys, "foreignKeys");
+        Objects.requireNonNull(pages, "pages must not be null");
+        TreeSet<PageImpact> sortedPages = new TreeSet<>(
+                java.util.Comparator.comparing(PageImpact::pageId));
+        for (PageImpact page : pages) {
+            sortedPages.add(Objects.requireNonNull(page, "pages must not contain null"));
+        }
+        pages = List.copyOf(sortedPages);
     }
 
-    /** An impact that names nothing: the change affects no edit and no foreign key. */
+    /** An impact that names nothing: no edit, foreign key or saved page is affected. */
     public static ChangeImpact none(SchemaChange change) {
         return new ChangeImpact(change, List.of(), List.of(), List.of(), List.of());
     }
 
     /**
      * True when nothing refers to the change: no label, no decision, no manual
-     * relationship and no baseline foreign key uses the changed entity or column.
+     * relationship, baseline foreign key or saved page uses the changed entity or column.
      */
     public boolean isEmpty() {
         return labels.isEmpty() && decisions.isEmpty() && manualRelationships.isEmpty()
-                && foreignKeys.isEmpty();
+                && foreignKeys.isEmpty() && pages.isEmpty();
     }
 
     /**

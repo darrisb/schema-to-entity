@@ -16,6 +16,8 @@ import com.example.dynamicmeta.data.SourceRegistry;
 import com.example.dynamicmeta.data.SourceSchema;
 import com.example.dynamicmeta.graph.Overlay;
 import com.example.dynamicmeta.graph.OverlayStore;
+import com.example.dynamicmeta.pages.PageDependencyExtractor;
+import com.example.dynamicmeta.pages.PageStore;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -53,8 +55,10 @@ import org.slf4j.LoggerFactory;
  * column is looked up in the {@link Overlay} and in the baseline's declared
  * foreign keys by {@link ImpactAnalyzer}, so {@link DriftReport#impact()} shows a
  * reviewer the labels, relationship decisions and manual relationships that refer
- * to the change before they accept it. A check only reads the overlay — the files
- * it writes remain the snapshots, and nothing here writes to a source database.
+ * to the change before they accept it. When pages are enabled, it also lists saved
+ * pages and their components that use the changed entity or column. A check only
+ * reads the overlay and pages — the files it writes remain the snapshots, and
+ * nothing here writes to a source database.
  * <p>
  * Checks of one source are serialized, so a scheduled run and a reviewer cannot
  * record two different baselines at once. Unknown source names are rejected with
@@ -73,6 +77,8 @@ public class DriftService {
     private final SnapshotBuilder builder;
     private final SnapshotStore store;
     private final OverlayStore overlayStore;
+    private final PageStore pageStore;
+    private final PageDependencyExtractor pageDependencyExtractor;
     private final Clock clock;
     private final Map<String, DriftReport> lastReports = new ConcurrentHashMap<>();
     private final Map<String, SchemaSnapshot> lastSnapshots = new ConcurrentHashMap<>();
@@ -110,11 +116,19 @@ public class DriftService {
      */
     public DriftService(SourceRegistry registry, SchemaCache cache, SnapshotBuilder builder,
                         SnapshotStore store, OverlayStore overlayStore, Clock clock) {
+        this(registry, cache, builder, store, overlayStore, null, null, clock);
+    }
+
+    public DriftService(SourceRegistry registry, SchemaCache cache, SnapshotBuilder builder,
+                        SnapshotStore store, OverlayStore overlayStore, PageStore pageStore,
+                        PageDependencyExtractor pageDependencyExtractor, Clock clock) {
         this.registry = Objects.requireNonNull(registry, "registry");
         this.cache = Objects.requireNonNull(cache, "cache");
         this.builder = Objects.requireNonNull(builder, "builder");
         this.store = Objects.requireNonNull(store, "store");
         this.overlayStore = overlayStore;
+        this.pageStore = pageStore;
+        this.pageDependencyExtractor = pageDependencyExtractor;
         this.clock = Objects.requireNonNull(clock, "clock");
     }
 
@@ -150,7 +164,8 @@ public class DriftService {
                 return remember(DriftReport.baselineCreated(source, current, current.takenAt()));
             }
             List<SchemaChange> changes = SnapshotDiff.diff(baseline, current);
-            List<ChangeImpact> impact = ImpactAnalyzer.analyze(baseline, currentOverlay(), changes);
+            List<ChangeImpact> impact = ImpactAnalyzer.analyze(baseline, currentOverlay(), changes,
+                    pageStore == null ? List.of() : pageStore.list(), pageDependencyExtractor);
             return remember(DriftReport.compared(source, baseline, current, changes, impact,
                     current.takenAt()));
         }

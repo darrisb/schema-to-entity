@@ -38,7 +38,6 @@ import com.example.dynamicmeta.pages.PageCorsConfiguration;
 import com.example.dynamicmeta.pages.PageDependencyExtractor;
 import com.example.dynamicmeta.pages.PageStore;
 import com.example.dynamicmeta.pages.PageStatusService;
-import org.springframework.beans.factory.ObjectProvider;
 
 import javax.sql.DataSource;
 
@@ -297,9 +296,15 @@ public class SchemaToEntityAutoConfiguration {
         @ConditionalOnMissingBean
         DriftService driftService(SourceRegistry sourceRegistry, SchemaCache schemaCache,
                 SnapshotBuilder snapshotBuilder, SnapshotStore snapshotStore,
-                ObjectProvider<OverlayStore> overlayStore) {
+                ObjectProvider<OverlayStore> overlayStore,
+                ObjectProvider<PageStore> pageStore,
+                ObjectProvider<PageDependencyExtractor> pageDependencyExtractor,
+                SchemaToEntityProperties properties) {
             return new DriftService(sourceRegistry, schemaCache, snapshotBuilder, snapshotStore,
-                    overlayStore.getIfAvailable(), Clock.systemUTC());
+                    overlayStore.getIfAvailable(),
+                    properties.isPagesEnabled() ? pageStore.getIfAvailable() : null,
+                    properties.isPagesEnabled() ? pageDependencyExtractor.getIfAvailable() : null,
+                    Clock.systemUTC());
         }
 
         /**
