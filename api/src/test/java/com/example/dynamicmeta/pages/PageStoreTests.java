@@ -4,6 +4,8 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.stream.Stream;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -54,17 +56,30 @@ class PageStoreTests {
         PageStore store = new PageStore(tempDir);
         Page first = store.save(page("dashboard", "Version 0"));
         Page latest = first;
+        List<Page> versions = new ArrayList<>();
+        versions.add(first);
+        String versionSixFile = null;
 
         for (int i = 1; i <= 7; i++) {
+            if (i == 7) {
+                versionSixFile = Files.readString(tempDir.resolve("dashboard.json"));
+            }
             latest = store.save(page("dashboard", "Version " + i));
+            versions.add(latest);
         }
 
         assertThat(latest.createdAt()).isEqualTo(first.createdAt());
         assertThat(latest.updatedAt()).isAfter(first.updatedAt());
         Path history = tempDir.resolve("history").resolve("dashboard");
         try (Stream<Path> files = Files.list(history)) {
-            assertThat(files.filter(Files::isRegularFile)).hasSize(5);
+            assertThat(files.filter(Files::isRegularFile)
+                    .map(path -> path.getFileName().toString()))
+                    .containsExactlyInAnyOrderElementsOf(versions.subList(2, 7).stream()
+                            .map(version -> version.updatedAt() + ".json")
+                            .toList());
         }
+        Path archivedVersionSix = history.resolve(versions.get(6).updatedAt() + ".json");
+        assertThat(Files.readString(archivedVersionSix)).isEqualTo(versionSixFile);
         assertThat(store.delete("dashboard")).isTrue();
         assertThat(Files.isDirectory(history)).isTrue();
     }
@@ -76,6 +91,15 @@ class PageStoreTests {
         assertThatThrownBy(() -> store.save(page("../escape", "Bad")))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("[a-z0-9-]{1,64}");
+        assertThatThrownBy(() -> store.get("../escape"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("[a-z0-9-]{1,64}");
+        assertThatThrownBy(() -> store.delete("BAD ID"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("[a-z0-9-]{1,64}");
+        assertThatThrownBy(() -> store.save(page("long-name", "x".repeat(121))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("at most 120 characters");
         assertThatThrownBy(() -> new Page("bad-document", "Bad", null,
                 mapper.createObjectNode(), null, null))
                 .isInstanceOf(IllegalArgumentException.class)
