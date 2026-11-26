@@ -25,7 +25,7 @@ docker-compose up --build
 ```
 
 2. Access the application:
-   - UI: http://localhost:8080
+   - UI: http://localhost:8082
    - Schema API: http://localhost:8081/api/schema
 
 ### Services
