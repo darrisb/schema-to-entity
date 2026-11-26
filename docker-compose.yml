@@ -61,7 +61,8 @@ services:
     depends_on:
       - api
     ports:
-      - "8080:80"
+      # 8082 on the host: 8080 is commonly taken (for example by llama-server).
+      - "8082:80"
     restart: unless-stopped
 
 volumes:
