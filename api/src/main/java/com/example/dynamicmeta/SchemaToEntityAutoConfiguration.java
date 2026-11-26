@@ -26,6 +26,7 @@ import com.example.dynamicmeta.data.SchemaCache;
 import com.example.dynamicmeta.data.SourceDefinitions;
 import com.example.dynamicmeta.data.SourceRegistry;
 import com.example.dynamicmeta.drift.DriftCheckScheduler;
+import com.example.dynamicmeta.drift.DriftController;
 import com.example.dynamicmeta.drift.DriftService;
 import com.example.dynamicmeta.drift.SnapshotBuilder;
 import com.example.dynamicmeta.drift.SnapshotStore;
@@ -192,6 +193,22 @@ public class SchemaToEntityAutoConfiguration {
             GraphController graphController(SchemaGraphBuilder schemaGraphBuilder,
                     OverlayStore overlayStore) {
                 return new GraphController(schemaGraphBuilder, overlayStore);
+            }
+
+            /**
+             * DR-007: the drift review endpoints live under
+             * {@code /api/graph/drift} and carry the graph's gating, admin
+             * standing and error shape. They read reports the
+             * {@link DriftService} bean from the drift configuration
+             * remembered or checked, and move overlay edits on a confirmed
+             * rename, so they need the service, the registry it checks and
+             * the overlay store the graph edits.
+             */
+            @Bean
+            @ConditionalOnMissingBean
+            DriftController driftController(DriftService driftService,
+                    SourceRegistry sourceRegistry, OverlayStore overlayStore) {
+                return new DriftController(driftService, sourceRegistry, overlayStore);
             }
         }
     }
