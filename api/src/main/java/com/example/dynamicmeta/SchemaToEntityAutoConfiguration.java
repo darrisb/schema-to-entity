@@ -1,5 +1,8 @@
 package com.example.dynamicmeta;
 
+import java.time.Clock;
+
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -220,11 +223,20 @@ public class SchemaToEntityAutoConfiguration {
             return new SnapshotBuilder();
         }
 
+        /**
+         * DR-005: the service also reports what each change affects, which it
+         * reads from the overlay. The overlay store is taken when the graph's web
+         * configuration registered one — drift needs {@code graph-enabled}, not the
+         * servlet conditions the graph endpoints do — and a service without it
+         * still reports the baseline foreign keys each change uses.
+         */
         @Bean
         @ConditionalOnMissingBean
         DriftService driftService(SourceRegistry sourceRegistry, SchemaCache schemaCache,
-                SnapshotBuilder snapshotBuilder, SnapshotStore snapshotStore) {
-            return new DriftService(sourceRegistry, schemaCache, snapshotBuilder, snapshotStore);
+                SnapshotBuilder snapshotBuilder, SnapshotStore snapshotStore,
+                ObjectProvider<OverlayStore> overlayStore) {
+            return new DriftService(sourceRegistry, schemaCache, snapshotBuilder, snapshotStore,
+                    overlayStore.getIfAvailable(), Clock.systemUTC());
         }
 
         /**

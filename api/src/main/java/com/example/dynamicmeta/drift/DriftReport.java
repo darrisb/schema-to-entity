@@ -19,7 +19,8 @@ import com.fasterxml.jackson.annotation.JsonValue;
  *   <li>{@link Status#UNCHANGED} — the current snapshot fingerprints exactly
  *       like the baseline.</li>
  *   <li>{@link Status#CHANGED} — {@link #changes()} describes every difference,
- *       as classified by {@link SnapshotDiff}.</li>
+ *       as classified by {@link SnapshotDiff}, and {@link #impact()} says what
+ *       each of them affects.</li>
  *   <li>{@link Status#UNAVAILABLE} — the schema could not be discovered, so no
  *       current snapshot exists: {@code currentFingerprint} is null,
  *       {@code changes} is empty and {@code error} carries the generic reason.
@@ -30,8 +31,12 @@ import com.fasterxml.jackson.annotation.JsonValue;
  * this check was compared against and are null when the source has none, as for
  * a first check that failed before recording one.
  * <p>
- * {@link #impact()} is a placeholder: what each change affects is worked out by
- * a later task, so it is always an empty list here.
+ * {@link #impact()} says what each change affects: {@link DriftService} runs
+ * every {@link #changes()} entry through {@link ImpactAnalyzer}, so the report
+ * carries one {@link ChangeImpact} per change, in the same order, naming the
+ * overlay labels, relationship decisions and manual relationships and the
+ * baseline foreign keys that refer to it. A change nothing refers to still has
+ * an entry, with empty lists.
  * <p>
  * This is a value object only: nothing in it reads from or writes to any source
  * database.
@@ -43,12 +48,12 @@ import com.fasterxml.jackson.annotation.JsonValue;
  * @param baselineTakenAt    when the baseline snapshot was taken, null when there is none
  * @param checkedAt          when this check ran
  * @param changes            the differences from the baseline, empty unless the source changed
- * @param impact             what the changes affect; empty until impact analysis exists
+ * @param impact             what each change affects, one entry per change
  * @param error              generic reason the source was unavailable, null otherwise
  */
 public record DriftReport(String source, Status status, String baselineFingerprint,
                           String currentFingerprint, Instant baselineTakenAt, Instant checkedAt,
-                          List<SchemaChange> changes, List<Object> impact, String error) {
+                          List<SchemaChange> changes, List<ChangeImpact> impact, String error) {
 
     public DriftReport {
         source = Objects.requireNonNull(source, "source");
@@ -73,13 +78,17 @@ public record DriftReport(String source, Status status, String baselineFingerpri
      * A report comparing the current snapshot with the accepted baseline:
      * {@link Status#UNCHANGED} when the diff is empty, {@link Status#CHANGED}
      * when it is not.
+     *
+     * @param impact what each change affects, one entry per change, as
+     *               {@link ImpactAnalyzer} analyzed them; {@link #baselineCreated}
+     *               and {@link #unavailable} have no changes to report impact for
      */
     public static DriftReport compared(String source, SchemaSnapshot baseline,
                                        SchemaSnapshot current, List<SchemaChange> changes,
-                                       Instant checkedAt) {
+                                       List<ChangeImpact> impact, Instant checkedAt) {
         Status status = changes.isEmpty() ? Status.UNCHANGED : Status.CHANGED;
         return new DriftReport(source, status, baseline.fingerprint(), current.fingerprint(),
-                baseline.takenAt(), checkedAt, changes, List.of(), null);
+                baseline.takenAt(), checkedAt, changes, impact, null);
     }
 
     /**

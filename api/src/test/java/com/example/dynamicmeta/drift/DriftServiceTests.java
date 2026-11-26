@@ -5,6 +5,7 @@ import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -27,6 +28,7 @@ import com.example.dynamicmeta.data.DataSourceDefinitions;
 import com.example.dynamicmeta.data.SchemaCache;
 import com.example.dynamicmeta.data.SourceNotFoundException;
 import com.example.dynamicmeta.data.SourceRegistry;
+import com.example.dynamicmeta.graph.OverlayStore;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.h2.jdbcx.JdbcDataSource;
@@ -49,8 +51,11 @@ import static org.mockito.Mockito.when;
  * is reported as changed with the classified changes, a reviewer accepts the
  * snapshot they were shown (and only that one), and a source that cannot be
  * discovered is reported as unavailable with a generic reason that never carries
- * the driver's message. These tests read H2 metadata and write snapshots into a
- * temporary folder only: nothing writes to a source database.
+ * the driver's message. DR-005 adds the impact of each change: a changed report
+ * names the overlay labels, decisions and manual relationships and the baseline
+ * foreign keys that refer to it. These tests read H2 metadata and write snapshots
+ * and the overlay file into a temporary folder only: nothing writes to a source
+ * database, and a check never edits the overlay.
  */
 class DriftServiceTests {
 
@@ -125,7 +130,12 @@ class DriftServiceTests {
         assertThat(changed.baselineFingerprint()).isEqualTo(baseline.currentFingerprint());
         assertThat(changed.baselineTakenAt()).isEqualTo(baseline.checkedAt());
         assertThat(changed.checkedAt()).isAfterOrEqualTo(changed.baselineTakenAt());
-        assertThat(changed.impact()).isEmpty();
+        // One impact entry per change, in the same order: nothing has been labelled
+        // or decided over a column that was just added, and no baseline key uses it.
+        assertThat(changed.impact()).singleElement().satisfies(impact -> {
+            assertThat(impact.change()).isEqualTo(changed.changes().getFirst());
+            assertThat(impact.isEmpty()).isTrue();
+        });
         assertThat(changed.error()).isNull();
         assertThat(changed.changes()).singleElement().satisfies(added -> {
             assertThat(added.type()).isEqualTo(SchemaChange.Type.COLUMN_ADDED);
@@ -169,6 +179,68 @@ class DriftServiceTests {
         // Every source keeps its own baseline file; the failed one has none.
         assertThat(snapshotDir.resolve("alpha.json")).exists();
         assertThat(snapshotDir.resolve("broken.json")).doesNotExist();
+
+        fixture.registry().destroy();
+    }
+
+    // ------------------------------------------------------------------
+    // Impact (DR-005)
+    // ------------------------------------------------------------------
+
+    @Test
+    void aChangedReportShowsWhatEachChangeAffects() throws Exception {
+        seed("ste_drift_impact",
+                "create table customers (id bigint primary key, email varchar(120))",
+                "create table orders (id bigint primary key, customer_id bigint"
+                        + " references customers(id))");
+        Fixture fixture = fixture(Map.of("shop", h2Source("ste_drift_impact")));
+        fixture.service().check("shop");
+
+        // The edits a reviewer made, spelled the way the graph spells its ids,
+        // over the table and the column that are about to go.
+        OverlayStore overlay = fixture.overlayStore();
+        overlay.setLabel("shop:customers.email", "Work address", null);
+        overlay.setLabel("shop:customers", "Customers", null);
+        overlay.setLabel("shop:orders", "Purchases", null);
+        overlay.decide("shop:customers.email->crm:contacts.email", "confirmed");
+        overlay.decide("shop:orders.customer_id->shop:customers.id", "confirmed");
+        overlay.addManual("shop:orders.customer_id", "shop:customers.email");
+
+        seed("ste_drift_impact", "alter table customers drop column email", "drop table orders");
+        DriftReport changed = fixture.service().check("shop");
+
+        assertThat(changed.status()).isEqualTo(DriftReport.Status.CHANGED);
+        assertThat(changed.impact()).hasSize(changed.changes().size());
+
+        // H2 reports CUSTOMERS and EMAIL; the overlay ids are lower-cased, and the
+        // match still finds them. A column change owns its column only, so the
+        // label of the table is not reported, and the declared key on
+        // orders.customer_id points at customers.id, not at the dropped column.
+        assertThat(impactOf(changed, SchemaChange.Type.COLUMN_REMOVED).labels())
+                .containsExactly("shop:customers.email");
+        assertThat(impactOf(changed, SchemaChange.Type.COLUMN_REMOVED).decisions())
+                .containsExactly("shop:customers.email->crm:contacts.email");
+        assertThat(impactOf(changed, SchemaChange.Type.COLUMN_REMOVED).manualRelationships())
+                .containsExactly("shop:orders.customer_id->shop:customers.email");
+        assertThat(impactOf(changed, SchemaChange.Type.COLUMN_REMOVED).foreignKeys()).isEmpty();
+
+        // An entity change owns everything below it: the table's own label, and the
+        // relationship ids that name one of its columns on either side, including
+        // the foreign key the baseline declared.
+        assertThat(impactOf(changed, SchemaChange.Type.ENTITY_REMOVED).labels())
+                .containsExactly("shop:orders");
+        assertThat(impactOf(changed, SchemaChange.Type.ENTITY_REMOVED).decisions())
+                .containsExactly("shop:orders.customer_id->shop:customers.id");
+        assertThat(impactOf(changed, SchemaChange.Type.ENTITY_REMOVED).manualRelationships())
+                .containsExactly("shop:orders.customer_id->shop:customers.email");
+        assertThat(impactOf(changed, SchemaChange.Type.ENTITY_REMOVED).foreignKeys())
+                .containsExactly("shop:orders.customer_id->shop:customers.id");
+
+        // Reporting impact only reads the overlay: every edit is still there, so a
+        // reviewer who does not accept the drift can find what they labelled.
+        assertThat(overlay.overlay().labels()).hasSize(3);
+        assertThat(overlay.overlay().relationshipDecisions()).hasSize(2);
+        assertThat(overlay.overlay().manualRelationships()).hasSize(1);
 
         fixture.registry().destroy();
     }
@@ -417,7 +489,7 @@ class DriftServiceTests {
 
     /** Everything one check needs, over one temporary snapshot folder. */
     private record Fixture(SourceRegistry registry, SchemaCache cache, SnapshotStore store,
-                           DriftService service) {
+                           OverlayStore overlayStore, DriftService service) {
     }
 
     private Fixture fixture(Map<String, SourceProperties> sources) {
@@ -430,8 +502,10 @@ class DriftServiceTests {
         SchemaCache cache = new SchemaCache(registry, discoveryService,
                 new SchemaToEntityProperties());
         SnapshotStore store = new SnapshotStore(snapshotDir);
-        return new Fixture(registry, cache, store,
-                new DriftService(registry, cache, new SnapshotBuilder(), store));
+        OverlayStore overlayStore = new OverlayStore(snapshotDir.resolve("overlay.json"));
+        return new Fixture(registry, cache, store, overlayStore,
+                new DriftService(registry, cache, new SnapshotBuilder(), store, overlayStore,
+                        Clock.systemUTC()));
     }
 
     private static SourceProperties h2Source(String database) {
@@ -474,6 +548,15 @@ class DriftServiceTests {
                 statement.execute(sql);
             }
         }
+    }
+
+    /** The one impact entry of the report's change of this type. */
+    private static ChangeImpact impactOf(DriftReport report, SchemaChange.Type type) {
+        List<ChangeImpact> matches = report.impact().stream()
+                .filter(impact -> impact.change().type() == type)
+                .toList();
+        assertThat(matches).as("impact of the change of type %s", type).hasSize(1);
+        return matches.getFirst();
     }
 
     /** The history file name the store gives a snapshot: its takenAt, UTC. */

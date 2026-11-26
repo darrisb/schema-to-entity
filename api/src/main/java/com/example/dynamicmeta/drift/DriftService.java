@@ -14,6 +14,8 @@ import com.example.dynamicmeta.data.SchemaCache;
 import com.example.dynamicmeta.data.SourceNotFoundException;
 import com.example.dynamicmeta.data.SourceRegistry;
 import com.example.dynamicmeta.data.SourceSchema;
+import com.example.dynamicmeta.graph.Overlay;
+import com.example.dynamicmeta.graph.OverlayStore;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -47,6 +49,13 @@ import org.slf4j.LoggerFactory;
  * by the reviewer is not the one that was last checked, because the schema moved
  * since they looked.
  * <p>
+ * Every change of a changed report is followed by what it affects: the entity or
+ * column is looked up in the {@link Overlay} and in the baseline's declared
+ * foreign keys by {@link ImpactAnalyzer}, so {@link DriftReport#impact()} shows a
+ * reviewer the labels, relationship decisions and manual relationships that refer
+ * to the change before they accept it. A check only reads the overlay — the files
+ * it writes remain the snapshots, and nothing here writes to a source database.
+ * <p>
  * Checks of one source are serialized, so a scheduled run and a reviewer cannot
  * record two different baselines at once. Unknown source names are rejected with
  * {@link SourceNotFoundException} before anything is read or written, so random
@@ -63,29 +72,49 @@ public class DriftService {
     private final SchemaCache cache;
     private final SnapshotBuilder builder;
     private final SnapshotStore store;
+    private final OverlayStore overlayStore;
     private final Clock clock;
     private final Map<String, DriftReport> lastReports = new ConcurrentHashMap<>();
     private final Map<String, SchemaSnapshot> lastSnapshots = new ConcurrentHashMap<>();
     private final Map<String, Object> locks = new ConcurrentHashMap<>();
 
+    /**
+     * A service without an overlay store: impact still names the baseline foreign
+     * keys a change uses, but there are no overlay edits to refer to.
+     */
     public DriftService(SourceRegistry registry, SchemaCache cache, SnapshotBuilder builder,
                         SnapshotStore store) {
-        this(registry, cache, builder, store, Clock.systemUTC());
+        this(registry, cache, builder, store, null, Clock.systemUTC());
     }
 
     /**
-     * @param registry supplies the configured source names checked by {@link #checkAll()}
-     * @param cache    rediscovery is forced through this cache
-     * @param builder  turns a discovered schema into a fingerprinted snapshot
-     * @param store    holds the accepted baseline of each source
-     * @param clock    supplies the moments recorded in a snapshot and a report
+     * A service without an overlay store, with a clock the caller controls.
+     *
+     * @see #DriftService(SourceRegistry, SchemaCache, SnapshotBuilder, SnapshotStore,
+     *      OverlayStore, Clock)
      */
     public DriftService(SourceRegistry registry, SchemaCache cache, SnapshotBuilder builder,
                         SnapshotStore store, Clock clock) {
+        this(registry, cache, builder, store, null, clock);
+    }
+
+    /**
+     * @param registry     supplies the configured source names checked by {@link #checkAll()}
+     * @param cache        rediscovery is forced through this cache
+     * @param builder      turns a discovered schema into a fingerprinted snapshot
+     * @param store        holds the accepted baseline of each source
+     * @param overlayStore the edits impact is reported against; {@code null} when the
+     *                     application has no overlay, in which case a report lists only
+     *                     the baseline foreign keys a change uses
+     * @param clock        supplies the moments recorded in a snapshot and a report
+     */
+    public DriftService(SourceRegistry registry, SchemaCache cache, SnapshotBuilder builder,
+                        SnapshotStore store, OverlayStore overlayStore, Clock clock) {
         this.registry = Objects.requireNonNull(registry, "registry");
         this.cache = Objects.requireNonNull(cache, "cache");
         this.builder = Objects.requireNonNull(builder, "builder");
         this.store = Objects.requireNonNull(store, "store");
+        this.overlayStore = overlayStore;
         this.clock = Objects.requireNonNull(clock, "clock");
     }
 
@@ -94,7 +123,8 @@ public class DriftService {
      *
      * @param source configured source name
      * @return what the check found; a first check records the baseline and
-     *         reports {@link DriftReport.Status#BASELINE_CREATED}
+     *         reports {@link DriftReport.Status#BASELINE_CREATED}, and a changed
+     *         report says what each change affects
      * @throws SourceNotFoundException when the source is not configured
      * @throws IllegalStateException   when an existing baseline file cannot be
      *                                 read; it is left untouched
@@ -120,7 +150,8 @@ public class DriftService {
                 return remember(DriftReport.baselineCreated(source, current, current.takenAt()));
             }
             List<SchemaChange> changes = SnapshotDiff.diff(baseline, current);
-            return remember(DriftReport.compared(source, baseline, current, changes,
+            List<ChangeImpact> impact = ImpactAnalyzer.analyze(baseline, currentOverlay(), changes);
+            return remember(DriftReport.compared(source, baseline, current, changes, impact,
                     current.takenAt()));
         }
     }
@@ -186,6 +217,16 @@ public class DriftService {
     private DriftReport remember(DriftReport report) {
         lastReports.put(report.source(), report);
         return report;
+    }
+
+    /**
+     * The edits a report's impact is read from: the overlay as the store last
+     * loaded or saved it, which is what the graph endpoints serve too. Without a
+     * store there is nothing a person has decided, and the empty overlay reports
+     * the baseline's foreign keys alone.
+     */
+    private Overlay currentOverlay() {
+        return overlayStore == null ? Overlay.empty() : overlayStore.overlay();
     }
 
     /**
