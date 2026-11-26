@@ -46,6 +46,17 @@ schema-to-entity:
   # itself; rediscovery never wipes it. A local file, so it is not shared
   # between instances.
   overlay-file: ${GRAPH_OVERLAY_FILE:./schema-overlay.json}
+  # Drift detection (needs graph-enabled above): each source's accepted baseline
+  # snapshot is kept here, with superseded ones under <dir>/history/<source>/.
+  # A check only reads metadata; the only files written are these snapshots and,
+  # on a confirmed rename, the overlay. In Docker this points at the same
+  # mounted volume as the overlay so baselines survive a rebuild.
+  snapshot-dir: ${SNAPSHOT_DIR:./snapshots}
+  # Check every source for drift in the background once every 15m, starting one
+  # interval after the application is ready. The starter leaves this unset, which
+  # means nothing is checked on a timer and drift is only checked when a caller
+  # asks (GET /api/graph/drift[?check=true]). See api/README.md, "Drift detection".
+  drift-check-interval: 15m
   # Origins allowed to call the read-only data API from a browser. This covers
   # /api/data/** only. Add the deployed UI origin for production.
   data-allowed-origins:

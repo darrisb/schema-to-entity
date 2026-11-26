@@ -3,6 +3,7 @@ package com.example.dynamicmeta.demo;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 
 import com.example.dynamicmeta.SchemaToEntityProperties;
 import com.example.dynamicmeta.data.SourceRegistry;
@@ -68,5 +69,22 @@ class DemoApplicationTests {
     void localUiDevServerIsAnAllowedOrigin() {
         assertThat(properties.getDataAllowedOrigins())
                 .contains("http://localhost:4200");
+    }
+
+    @Test
+    void driftCheckingRunsOnATimerWithBaselinesOnAVolume() throws IOException {
+        String yaml = Files.readString(
+                Path.of("src/main/resources/application.yml"));
+
+        // DR-009: drift needs the graph, and the demo checks in the background
+        // so a reviewer sees a report without asking for one. Baselines are
+        // read and written as local files, like the overlay; compose puts the
+        // folder on the same /data volume. Nothing here touches a source
+        // database, and the first scheduled check waits a full interval.
+        assertThat(properties.isGraphEnabled()).isTrue();
+        assertThat(properties.getDriftCheckInterval()).isEqualTo(Duration.ofMinutes(15));
+        assertThat(properties.getSnapshotDir()).isNotBlank();
+        assertThat(yaml).contains("drift-check-interval: 15m");
+        assertThat(yaml).contains("snapshot-dir: ${SNAPSHOT_DIR:");
     }
 }

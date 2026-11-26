@@ -133,6 +133,8 @@ schema-to-entity:
 | `schema-to-entity.query-timeout` | `15s` | Maximum time a single data query may run. |
 | `schema-to-entity.schema-cache-ttl` | `10m` | How long a source's discovered schema is cached. |
 | `schema-to-entity.data-allowed-origins` | `[]` | Browser origins allowed to call `/api/data/**`. Empty sends no CORS headers. |
+| `schema-to-entity.snapshot-dir` | `./snapshots` | Folder holding each source's accepted baseline snapshot. See "Drift detection" below. |
+| `schema-to-entity.drift-check-interval` | *(unset)* | How often every source is checked for drift in the background. Unset schedules nothing. Requires `graph-enabled`. See "Drift detection" below. |
 
 Each source accepts:
 
@@ -275,7 +277,7 @@ schema-to-entity:
   overlay-file: ./schema-overlay.json
 ```
 
-The demo application ships with `graph-enabled: true` and two sources (`demo` in schema `public`, `billing` in schema `billing`, both in the compose Postgres), so the document shows a declared foreign key inside `demo`, one inside `billing` and a cross-source proposal between them. Note that `db/init/02-billing.sql` only runs on an empty Postgres data directory — see Known Issues #5 (`docker compose down -v` first).
+The demo application ships with `graph-enabled: true` and two sources (`demo` in schema `public`, `billing` in schema `billing`, both in the compose Postgres), so the document shows a declared foreign key inside `demo`, one inside `billing` and a cross-source proposal between them. It also checks those sources for drift every 15 minutes, keeping the baselines at `/data/snapshots` on the same mounted volume as the overlay — see "Drift detection" below. Note that `db/init/02-billing.sql` only runs on an empty Postgres data directory — see Known Issues #5 (`docker compose down -v` first).
 
 ### What the document contains
 
@@ -433,7 +435,235 @@ curl -X DELETE 'http://localhost:8080/api/graph/overlay/labels?id=demo:users'
 
 Removes the label of the id. Returns `204`, or `404` when neither the document nor the overlay knows the id.
 
-**Security:** the graph endpoints are admin endpoints, like `/api/schema/**`: the document names every configured source and the overlay endpoints accept edits, so they receive no CORS headers — only `/api/data/**` does — and have no authentication of their own. `graph-enabled` is off by default for that reason; keep it off, or behind authentication and authorization, outside local development. Nothing here writes to any source database; the only file written is the overlay JSON.
+**Security:** the graph endpoints are admin endpoints, like `/api/schema/**`: the document names every configured source and the overlay endpoints accept edits, so they receive no CORS headers — only `/api/data/**` does — and have no authentication of their own. `graph-enabled` is off by default for that reason; keep it off, or behind authentication and authorization, outside local development. Nothing here writes to any source database; the only file written is the overlay JSON. The drift endpoints below live under `/api/graph/drift` and carry exactly the same admin standing, gating and error shape.
+
+## Drift detection (snapshots, baselines and review)
+
+The `com.example.dynamicmeta.drift` package answers one question: **has a source's structure changed since someone last agreed it looked right?** A check rediscovers a source, turns what it found into a snapshot, compares that snapshot with the accepted baseline and lists every difference with what each one affects, so a person can review the changes and accept the ones they agree with.
+
+Drift detection is **one-way: database → JSON**. It reads metadata, it writes snapshot files, that is all. No part of it — a check, a report, an acceptance or a rename — ever sends SQL to a source database, and accepting drift applies nothing anywhere: it only makes the snapshot you were shown the new baseline. If a report says a column is missing, the DDL that adds it is yours to run with your own migration tooling; drift detection reports the outcome of the next check, it never causes one. The only files written are the baseline snapshots and, on a confirmed rename, the overlay.
+
+```yaml
+schema-to-entity:
+  # Drift rides on the graph's gating: it reads the same discovered schemas the
+  # data API caches, and its endpoints live under /api/graph/drift.
+  data-api-enabled: true
+  graph-enabled: true
+  # Folder holding each source's accepted baseline (default: ./snapshots).
+  snapshot-dir: ./snapshots
+  # Unset by default, which schedules nothing: drift is then checked only when a
+  # caller asks. When set, one background thread checks every source once per
+  # interval, starting one interval after the application is ready.
+  drift-check-interval: 15m
+```
+
+In Docker, point `snapshot-dir` at a mounted volume — the bundled `docker-compose.yml` puts it at `/data/snapshots` on the same `overlay_data` volume as the overlay — or the baselines are lost when the container is rebuilt, and a non-root container user may not be able to write next to the application jar at all.
+
+### Fingerprints and baselines
+
+`SnapshotBuilder` turns a discovered schema into a canonical `SchemaSnapshot`: entities, their columns and their declared foreign keys are sorted by lower-cased name, so the order a driver happened to report objects in never matters. The snapshot carries a **fingerprint** — the lower-case hex SHA-256 of a canonical string built from that sorted structure, 64 characters. Every field in the canonical string is tagged and length-prefixed (so no field boundary can blur into its neighbour) and it contains:
+
+- entity names and kinds (`table`, `view`, `materialized-view`);
+- column names, their types **as reported** — length and scale included — and their nullability;
+- key columns, **in key order**: the order of a composite key is part of the structure;
+- **declared** foreign keys (column, referenced table, referenced column).
+
+It leaves out everything that is not structure: `takenAt`, the source name, the dialect, the type *category* (derived from the type name), overlay labels and descriptions, and inferred relationships. The fingerprint therefore **changes exactly when the structure changes** and stays identical when a snapshot is merely taken again.
+
+The **baseline** is the snapshot a person last accepted, kept as one pretty-printed JSON file per source, `<snapshot-dir>/<source>.json`. Saving a new baseline first copies the one it replaces into `<snapshot-dir>/history/<source>/<takenAt>.json` (UTC, `yyyyMMdd'T'HHmmss'Z'`) and keeps the ten newest. Both writes are atomic (temporary file, then moved over), the folder is created when missing, and source names must match `[a-z0-9-]{1,40}`, so a crafted name cannot escape the folder. A baseline file that exists but cannot be read is an error that names the file: it is never deleted or overwritten automatically, because fixing it is a human decision.
+
+**The first check of a source has nothing to compare against.** It stores the snapshot it just took as the baseline and reports `baseline-created` with no changes and both fingerprints equal — so drift is never reported against a schema nobody has agreed to yet, and the reviewer's job starts at the *second* check. A failed first check records nothing: it reports `unavailable` with a null baseline, and the next successful check creates the baseline as usual.
+
+A report is remembered in memory per source, so reading drift costs no database round-trip; `?check=true` (and a source that has never been checked in this process) runs a fresh check instead. Reports are in-memory only: a restart clears them while the baselines on disk remain, so the first read after a restart checks the source again — and an accept before any check has run is refused with `409`.
+
+### What a check reports
+
+| `status` | When | What the report carries |
+|---|---|---|
+| `unchanged` | the current snapshot fingerprints exactly like the baseline | `changes` and `impact` are empty; both fingerprints are equal |
+| `changed` | the fingerprints differ | `changes` lists every difference, `impact` one entry per change |
+| `baseline-created` | first check of a source with no baseline on disk | `changes` is empty; `baselineFingerprint` equals `currentFingerprint` |
+| `unavailable` | the schema could not be discovered | `currentFingerprint` is null, `changes` is empty, `error` is the generic `Schema discovery failed` — never the driver's message, which can quote a JDBC URL or a password. The baseline is still reported, and an unavailable source never overwrites it. |
+
+| Field | Meaning |
+|---|---|
+| `source` | the source that was checked |
+| `status` | one of the four names above (`baseline-created` is the wire spelling of the first) |
+| `baselineFingerprint` | the accepted baseline this check compared against, null when there is none |
+| `currentFingerprint` | the snapshot taken now, null when `unavailable` |
+| `baselineTakenAt` | when the baseline snapshot was taken, null when there is none |
+| `checkedAt` | when this check ran |
+| `changes` | the differences from the baseline, sorted by entity, then column, then change type |
+| `impact` | what each change affects — one entry per `changes` entry, in the same order |
+| `error` | the generic reason only, for `unavailable`; null otherwise |
+
+### Change types and severities
+
+Every difference is a `SchemaChange` with a `type`, a `severity`, the `entity` it belongs to (spelled the way the snapshot it was read from spells it — for a change inside an entity that exists in both snapshots, that is the baseline's spelling), a `column` for column-level changes (null for entity-level ones) and short human-readable `before` and `after` states — either may be null when the change only adds or only removes something. Severities follow what a reader of the data would notice:
+
+| Severity | Meaning |
+|---|---|
+| `ADDITIVE` | the schema gained something; existing data and existing readers are unaffected |
+| `BREAKING` | something existing consumers rely on is gone or tightened |
+| `REVIEW` | not safe to classify from metadata alone — a person should look |
+
+| Type | Severity | What it means | `before` → `after` |
+|---|---|---|---|
+| `ENTITY_ADDED` | `ADDITIVE` | a table or view the baseline did not have | null → kind (`table`, `view`, …) |
+| `ENTITY_REMOVED` | `BREAKING` | a table or view that is gone; its columns are **not** filed individually, because it is the table that disappeared | kind → null |
+| `ENTITY_KIND_CHANGED` | `BREAKING` | a table that is now a view, or a view that is now a table | kind → kind |
+| `ENTITY_RENAME_CANDIDATE` | `REVIEW` | a removed entity whose columns mostly match an added entity's — see "Rename candidates" | kind → kind, `relatedTo` names the added entity |
+| `COLUMN_ADDED` | `ADDITIVE` when nullable, `BREAKING` when it demands a value | a column the baseline did not have | null → `varchar(40) nullable` |
+| `COLUMN_REMOVED` | `BREAKING` | a column that is gone | `varchar(40) nullable` → null |
+| `COLUMN_TYPE_CHANGED` | graded, see below | a column reported with a different type | `varchar(80)` → `varchar(120)` |
+| `COLUMN_NULLABILITY_CHANGED` | `ADDITIVE` when the column became nullable, `BREAKING` when it became `NOT NULL` | a column that changed between NULL allowed and NULL forbidden | `nullable` → `not null` |
+| `COLUMN_RENAME_CANDIDATE` | `REVIEW` | a removed column whose type matches an added column of a similar name — see "Rename candidates" | `varchar(40) nullable` → `varchar(40) nullable`, `relatedTo` names the added column |
+| `KEY_COLUMNS_CHANGED` | `BREAKING` | the entity's key columns, or their order, are different | `id` → `tenant_id, id` (`none` when there is no key) |
+| `FOREIGN_KEY_ADDED` | `ADDITIVE` | a declared foreign key the baseline did not have | null → `users.id` |
+| `FOREIGN_KEY_REMOVED` | `BREAKING` | a declared foreign key that is gone; a key that kept its column but points elsewhere reads as the old one removed and the new one added | `users.id` → null |
+
+A type change is graded by how far it moves:
+
+- across type categories (`bigint` → `varchar`) — `BREAKING`;
+- within one category, the same family with more room (`varchar(80)` → `varchar(120)`) — `ADDITIVE`, and less room (`varchar(120)` → `varchar(80)`) — `BREAKING`;
+- anything else in one category — `REVIEW`: `int` → `bigint`, `date` → `timestamp`, an unbounded side (`varchar` → `varchar(120)`), or a scale-only move (`decimal(10,2)` → `decimal(10,4)`). It may be harmless, but metadata cannot say.
+
+Types are compared case- and whitespace-insensitively, so a driver that spells the same type differently (`VARCHAR (80)`) reports no change at all.
+
+### Rename candidates
+
+A rename cannot be told from a drop-and-create by metadata alone, so it is **never certain and never replaces anything**: `COLUMN_RENAME_CANDIDATE` and `ENTITY_RENAME_CANDIDATE` come alongside the removal and the addition they pair up, and `relatedTo` names the other side so a reader can see what is matched with what.
+
+- Two columns of the same entity are a candidate when they have the **same type** and their lower-cased names either contain one another or are at least `0.6` similar, where similarity is one minus the edit distance over the longer name.
+- Two entities, one removed and one added, are a candidate when they share at least `0.8` of their column names — the shared count over the larger of the two column sets, so an entity cannot look like a rename of a much bigger one.
+
+What a reviewer does with a candidate is confirm it: `POST /api/graph/drift/{source}/renames` moves every overlay edit made for the old id to the new id, which is what stops the labels, decisions and manual relationships the reviewer wrote from showing up as lost after the table or column is renamed in the database. The report itself keeps listing the removal and the addition — the candidate is a hint, and the rename is the decision.
+
+### Impact: what each change affects
+
+A `changed` report carries one `ChangeImpact` per change, in the same order, naming everything in the overlay and the baseline that refers to the changed entity or column, so a reviewer sees the consequences **before** accepting:
+
+| Field | Holds |
+|---|---|
+| `change` | the change this entry is about (the same object as the matching `changes` entry) |
+| `labels` | entity or column ids the overlay has a label for |
+| `decisions` | relationship ids the overlay has a `confirmed` or `rejected` decision for |
+| `manualRelationships` | relationship ids a person asserted by hand over this entity or column |
+| `foreignKeys` | the baseline's declared foreign keys, as relationship ids, with this column or entity at either end |
+
+Ids are spelled exactly as in the graph document and the overlay file (`demo:users`, `demo:users.user_name`, `demo:posts.author_id->demo:users.id`), so anything listed here is something the reviewer can look up and edit. Matching is case-insensitive and scoped to the source the baseline names, so a change in one source never reports the identically named table of another. An entity-level change owns the entity id and everything below it (its columns among them); a column change owns exactly its own column id — dropping a column does not report the label of its table, because the table is still there. Relationship ids are checked on both sides of `->`. A change nothing refers to still gets an entry, with empty lists; `impact` always lines up with `changes` by position. Reporting impact only **reads** the overlay — it changes nothing.
+
+### What is *not* drift
+
+- **Hidden columns.** `hidden-columns` is applied during discovery, so a hidden column is already absent from the schema a snapshot is built from — on both sides of the comparison. A column you hide is invisible to the data API and to drift detection alike: drift never reports a hidden column as added, removed or retyped, because it is not part of the structure being compared. (One consequence worth knowing: a baseline taken while the column was visible still holds it, so the first check after you add it to `hidden-columns` reports `COLUMN_REMOVED`. Accepting that report re-baselines and the report goes quiet.)
+- **Inferred relationships.** Name-matched proposals — view-key inferences and cross-source suggestions — can appear or disappear without the schema changing, so they are dropped before fingerprinting and never reach a snapshot. Confirming, rejecting or deleting a proposal is an overlay edit, not drift.
+- **Overlay edits.** Labels, descriptions, decisions and manual relationships live in the overlay, not in the database; editing them changes no fingerprint.
+- **Casing and spelling.** `USERS` and `users` are the same table; `VARCHAR (80)` and `varchar(80)` are the same type. Matching and hashing are done lower-cased, with the root locale.
+- **Order and dialect.** Objects are sorted before comparison, and the driver's product name is not fingerprinted, so a source reported in a different order, or after a version bump that changed nothing structural, is `unchanged`.
+- **Data.** Drift is structure only. Inserting, updating or deleting rows never shows up.
+
+### Endpoints
+
+All drift endpoints live under `/api/graph/drift`, come with `graph-enabled: true` and `data-api-enabled: true`, and return JSON. Errors are always `{"error": "..."}` with the message passed through the secret redactor: an unknown source is `404`, invalid input is `400`, and an acceptance that no longer matches what the last check showed — or that comes before any check — is `409`. They receive no CORS headers (only `/api/data/**` does) and have no authentication of their own.
+
+#### `GET /api/graph/drift` — the last report of every source
+
+```bash
+curl http://localhost:8080/api/graph/drift
+curl 'http://localhost:8080/api/graph/drift?check=true'
+```
+
+A JSON array of reports in source-name order. Without `check` each source serves the report the last check remembered, and a source that has never been checked in this process is checked now — which is what records its baseline. `?check=true` runs a fresh check of every source first, in name order.
+
+#### `GET /api/graph/drift/{source}` — one source's report
+
+```bash
+curl http://localhost:8080/api/graph/drift/demo
+curl 'http://localhost:8080/api/graph/drift/demo?check=true'
+```
+
+The remembered report, or a fresh check when the source has none or when `check=true` asks for one. An unknown source is `404`. A `changed` report reads like this (trimmed to two entities of the demo source):
+
+```json
+{
+  "source": "demo",
+  "status": "changed",
+  "baselineFingerprint": "ba6644c4dc218a5a39d75091c9b6deae0c5bd1044031ac3a863b23b54566a487",
+  "currentFingerprint": "03b3fe9c31a13f30ced50b2ceef6fa05d3a6537efe8e2ad06c5620d46d930adf",
+  "baselineTakenAt": "2026-11-24T09:15:00Z",
+  "checkedAt": "2026-11-25T09:30:00Z",
+  "changes": [
+    { "type": "FOREIGN_KEY_REMOVED", "severity": "BREAKING", "entity": "posts", "column": "author_id",
+      "before": "users.id", "after": null, "relatedTo": null },
+    { "type": "COLUMN_REMOVED", "severity": "BREAKING", "entity": "users", "column": "user_name",
+      "before": "varchar(40) nullable", "after": null, "relatedTo": null },
+    { "type": "COLUMN_RENAME_CANDIDATE", "severity": "REVIEW", "entity": "users", "column": "user_name",
+      "before": "varchar(40) nullable", "after": "varchar(40) nullable", "relatedTo": "username" },
+    { "type": "COLUMN_ADDED", "severity": "ADDITIVE", "entity": "users", "column": "username",
+      "before": null, "after": "varchar(40) nullable", "relatedTo": null }
+  ],
+  "impact": [
+    { "change": { "type": "FOREIGN_KEY_REMOVED", "severity": "BREAKING", "entity": "posts", "column": "author_id",
+                   "before": "users.id", "after": null, "relatedTo": null },
+      "labels": [], "decisions": ["demo:posts.author_id->demo:users.id"],
+      "manualRelationships": [], "foreignKeys": ["demo:posts.author_id->demo:users.id"] },
+    { "change": { "type": "COLUMN_REMOVED", "severity": "BREAKING", "entity": "users", "column": "user_name",
+                   "before": "varchar(40) nullable", "after": null, "relatedTo": null },
+      "labels": ["demo:users.user_name"], "decisions": [], "manualRelationships": [], "foreignKeys": [] },
+    { "change": { "type": "COLUMN_RENAME_CANDIDATE", "severity": "REVIEW", "entity": "users", "column": "user_name",
+                   "before": "varchar(40) nullable", "after": "varchar(40) nullable", "relatedTo": "username" },
+      "labels": ["demo:users.user_name"], "decisions": [], "manualRelationships": [], "foreignKeys": [] },
+    { "change": { "type": "COLUMN_ADDED", "severity": "ADDITIVE", "entity": "users", "column": "username",
+                   "before": null, "after": "varchar(40) nullable", "relatedTo": null },
+      "labels": [], "decisions": [], "manualRelationships": [], "foreignKeys": [] }
+  ],
+  "error": null
+}
+```
+
+#### `POST /api/graph/drift/{source}/accept` — confirm what you were shown
+
+```bash
+curl -X POST http://localhost:8080/api/graph/drift/demo/accept \
+  -H 'Content-Type: application/json' \
+  -d '{"fingerprint": "03b3fe9c31a13f30ced50b2ceef6fa05d3a6537efe8e2ad06c5620d46d930adf"}'
+```
+
+Promotes the snapshot that fingerprint names to the source's new baseline and returns the fresh report that follows — `unchanged`, because the baseline now matches the schema. The fingerprint must be the `currentFingerprint` of the report you just read: a stale one means the schema moved while you were looking, and accepting then would accept something else, so the request is refused with `409` and you should read the newer report and accept that one. Accepting before anything has been checked is `409` too; a blank or missing `fingerprint` is `400`. Accepting writes a snapshot file and the archived previous baseline — nothing is sent to the database.
+
+#### `POST /api/graph/drift/{source}/renames` — carry edits across a confirmed rename
+
+```bash
+curl -X POST http://localhost:8080/api/graph/drift/demo/renames \
+  -H 'Content-Type: application/json' \
+  -d '{"from": "demo:users.user_name", "to": "demo:users.username"}'
+```
+
+Moves every overlay edit made for one entity or column id of this source to its new id: labels, relationship decisions and the ends of manual relationships all follow the rename. Both ids must be well-formed entity or column ids **of the source in the path** — a relationship id, a blank id, or one naming another source is `400`; an unknown source is `404`. Returns `204`. Renaming an entity id moves its columns' edits along with it; an overlay label already held for the new id wins, so a rename never overwrites what someone wrote for the new name. The only file written is the overlay.
+
+### The review-then-accept workflow
+
+1. **Read the drift.** `GET /api/graph/drift?check=true` (or just `GET /api/graph/drift/{source}` for one source). With `drift-check-interval` set, a background check has usually done this for you and logged a warning naming each `changed` or `unavailable` source.
+2. **Read the consequences.** For every change, look at its `impact` entry: the labels, decisions, manual relationships and baseline foreign keys that refer to it. Those are the edits you need to care about, and the ids are exactly the ones `GET /api/graph` and the overlay file use.
+3. **Decide, per source:**
+   - *Expected change* — you ran a migration and it is correct. Accept it in step 4.
+   - *Rename* — confirm the candidate by moving the edits: `POST /api/graph/drift/{source}/renames` with the old and new ids. The overlay now spells things the way the database does, and the graph document shows the labels again.
+   - *Not expected* — fix it properly: either change the database back (with your own migration tooling — nothing here does it for you) or accept the change as the new truth. Leaving it unaccepted keeps it reported on every check, which is the point.
+   - *`unavailable`* — the source could not be reached or discovered. Nothing was written and the baseline is untouched; fix connectivity or configuration and check again.
+4. **Accept:** `POST /api/graph/drift/{source}/accept` with the `currentFingerprint` of the report you reviewed. The baseline file is replaced (the previous one archived under `history/<source>/`) and the response is `unchanged`. A `409` means a newer check happened in the meantime — go back to step 2 with the newer report.
+5. **Confirm:** a later `GET /api/graph/drift/{source}` (remembered or re-checked) reports `unchanged`. Remember that reports are in memory and baselines are on disk: after a restart the first read checks again, and an accept before any check in that process is `409`.
+
+Accepting is a statement about the snapshot, never about the database: the database already is what it is, and drift detection only records that a person has reviewed and agreed to it.
+
+### Telling a UI which schema it is reading (`X-Schema-Version`)
+
+Every successful data API response (`/api/data/**`) carries the `X-Schema-Version` header: the **first 12 characters of the same snapshot fingerprint** the drift work uses, computed once per discovery and cached with the schema. `GET /api/data/{source}` also repeats the value as a `schemaVersion` field on every entity descriptor, and a source whose listing is empty carries the version in the header only.
+
+- The version changes exactly when the structure changes, and stays put while the cache serves the same schema. A UI can cache it with the metadata it fetched and refetch as soon as the header differs — that is the whole drift signal a browser needs, and it is the only one available to it, because the drift endpoints are admin endpoints and get no CORS headers.
+- Correlating the two views is arithmetic: `currentFingerprint` truncated to 12 characters is the version the data API serves for that snapshot. In the example above the drift check reports `03b3fe9c31a1`, and `X-Schema-Version` moves from `ba6644c4dc21` to `03b3fe9c31a1` for the same reason.
+- The version moves as soon as the cache starts serving the new structure — including when a drift check (a `?check=true` read or a scheduled one) forces rediscovery — so it can change **before** anyone accepts the drift. Accepting a baseline does not itself move any version: the fingerprint already matched the schema.
+
+**Security:** the drift endpoints are admin endpoints, exactly like `/api/graph/**` and `/api/schema/**`. A report names every configured source and its structure, and an accept rewrites the baseline files, so they receive no CORS mapping and have no authentication of their own; they are registered by `graph-enabled`, which is off by default for that reason. Keep them off, or behind authentication and authorization, outside local development — see Known Issues #9, #11 and #12. Nothing in drift detection writes to a source database; the files it writes are the snapshots under `snapshot-dir` and, for a confirmed rename, the overlay.
 
 ## Connection layer
 

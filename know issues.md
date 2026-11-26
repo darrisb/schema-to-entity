@@ -185,6 +185,59 @@ consistent overlays requires a shared store (a database table or object storage)
 behind `OverlayStore`; the local file is the simplest store that survives
 rediscovery and restarts.
 
+### 11. Security: the drift endpoints have no authentication
+
+**Impact:** `/api/graph/drift/**` has no authentication or authorization of its own — it
+is unauthenticated exactly like the rest of the admin API (`/api/schema/**`,
+`/api/data/**`, `/api/graph/**`). A drift report names every configured source and the
+structure of its tables, columns, keys and declared foreign keys, and the two `POST`
+endpoints accept writes: `{source}/accept` replaces the accepted baseline a reviewer is
+told to trust, and `{source}/renames` rewrites overlay ids. Any caller that can reach the
+API can read the reports and rewrite the review state, which is how a baseline gets
+"accepted" by someone who never reviewed anything.
+
+**Mitigations in place:**
+
+| Control | Setting / Mechanism | Default |
+|---|---|---|
+| Toggle | `schema-to-entity.graph-enabled` (drift is registered with the graph) | `false` |
+| Dependency | Drift beans also require `data-api-enabled: true` | `false` |
+| CORS | Drift endpoints receive no CORS mapping — only `/api/data/**` does | always on |
+| Read-only sources | A check only reads JDBC metadata; nothing in the drift path writes to any source database | always on |
+| Accept guard | An `accept` must repeat the fingerprint the last check showed; a stale one is `409`, so an unreviewed schema cannot be confirmed by a racing caller | always on |
+| Secret redaction | Error responses pass through `SecretRedactor`; an unavailable source reports a generic error, never a driver message | always on |
+| Source check | Unknown source names are `404` before anything is read, written or remembered | always on |
+
+**What remains:** No authentication or authorization. Require authentication before any
+non-local deployment, as for `/api/schema/extract` (issue 6), `/api/data/**` (issue 8) and
+`/api/graph/**` (issue 9). In the bundled demo, `graph-enabled: true` and
+`drift-check-interval: 15m` mean the reports exist and the endpoints are reachable locally;
+keep that combination off the public internet.
+
+### 12. Baseline snapshots are local files, not shared between instances
+
+**Impact:** The accepted baseline of each source is one JSON file per source under
+`schema-to-entity.snapshot-dir` (default `./snapshots`), with superseded baselines in
+`history/<source>/` (the ten newest kept). Like the overlay (issue 10), this is a local
+file system, not a shared store: run more than one instance and each keeps its own
+baselines and its own review history, so one instance can be reporting drift against a
+baseline another instance never accepted. The in-memory reports go further — they live in
+`DriftService`, so a restart (or a different instance) clears them while the files on disk
+remain, and an `accept` before the first check in that process is `409`.
+
+**Workaround:** Give the instances of one deployment the same mounted volume as
+`snapshot-dir` — the bundled `docker-compose.yml` puts it at `/data/snapshots` on the
+`overlay_data` volume, next to `/data/schema-overlay.json`. They then share the baselines,
+though concurrent writers on different hosts can still lose a save, because
+`SnapshotStore` is last-writer-wins per save and the checks are serialized per source only
+within one process.
+
+**Status:** Open by design for this stage, same as the overlay. A multi-instance
+deployment that needs one review history needs a shared store behind `SnapshotStore`.
+Deliberately left as-is: a baseline file that exists but cannot be read is reported as an
+error naming the file and is never deleted or overwritten automatically, so a damaged or
+foreign baseline stops the check instead of being silently re-baselined.
+
 ## Caveats on the above
 
 The repo has no Hibernate dependency. All Hibernate findings (issue 1, and the successful
