@@ -666,6 +666,109 @@ Every successful data API response (`/api/data/**`) carries the `X-Schema-Versio
 
 **Security:** the drift endpoints are admin endpoints, exactly like `/api/graph/**` and `/api/schema/**`. A report names every configured source and its structure, and an accept rewrites the baseline files, so they receive no CORS mapping and have no authentication of their own; they are registered by `graph-enabled`, which is off by default for that reason. Keep them off, or behind authentication and authorization, outside local development — see Known Issues #9, #11 and #12. Nothing in drift detection writes to a source database; the files it writes are the snapshots under `snapshot-dir` and, for a confirmed rename, the overlay.
 
+## LLM and assistant access
+
+An assistant or voice front end can answer database questions without generating SQL. Enable the data API, graph and LLM support together:
+
+```yaml
+schema-to-entity:
+  data-api-enabled: true
+  graph-enabled: true
+  llm-enabled: true
+```
+
+The intended flow is:
+
+1. The user gives the assistant a natural-language prompt.
+2. The assistant reads the compact schema summary from `GET /api/llm/schema`, or calls the MCP `schema_summary` tool. The summary contains only cached, visible schema metadata unless values are explicitly requested.
+3. The assistant chooses from structured tools: `list_sources`, `describe_entity`, `find_related`, `query_entity`, `aggregate` and `schema_summary`.
+4. Schema to Entity validates every entity, column, relationship, filter and value against the cached schema, builds a read-only `SELECT`, binds the values as parameters and returns bounded JSON.
+5. The assistant explains those returned results to the user.
+
+The caller or model never supplies SQL. An integration should expose only these structured operations, not a generic database or SQL-execution tool.
+
+### Worked example: open orders for a named customer
+
+For “Which open orders belong to Acme Ltd?”, an assistant first uses `describe_entity` and `find_related` to confirm the cached names and the relationship from `orders.customer_id` to `customers.id`. It can then call:
+
+```json
+{
+  "tool": "query_entity",
+  "arguments": {
+    "entityId": "sales:customers",
+    "filters": { "eq.name": "Acme Ltd" },
+    "fields": ["id", "name"],
+    "limit": 20,
+    "expand": []
+  }
+}
+```
+
+After obtaining the customer id, it calls `query_entity` for `sales:orders` with `{"eq.customer_id": 42, "eq.status": "OPEN"}`, the desired visible fields, and a limit. Alternatively, when the confirmed relationship is in the direction needed by the query, it can request `expand: ["customer_id"]`; expanded rows appear under `_expanded.customer_id`. `expand` requires `graph-enabled: true`, accepts at most three source columns, and follows declared or confirmed relationships only. In both calls, `Acme Ltd`, `42` and `OPEN` are bound values, not SQL fragments.
+
+### Worked example: total sales by status last month
+
+For “What were total sales by status last month?”, the assistant calculates the exact half-open date range for the user’s locale (for example, October 1 through November 1) and calls:
+
+```json
+{
+  "tool": "aggregate",
+  "arguments": {
+    "entityId": "sales:orders",
+    "group": ["status"],
+    "metrics": ["sum:total"],
+    "filters": {
+      "gte.created_at": "2026-10-01T00:00:00Z",
+      "lt.created_at": "2026-11-01T00:00:00Z"
+    },
+    "sort": ["-sum_total"],
+    "limit": 100
+  }
+}
+```
+
+The equivalent HTTP endpoint is `GET /api/data/{source}/{entity}/aggregate`, using `group=status`, `metric=sum:total`, `gte.created_at=...`, `lt.created_at=...`, `sort=-sum_total` and `limit=100`. Aggregate metrics are `count`, `count:column`, `sum:column`, `avg:column`, `min:column` and `max:column`; the implementation checks that each function is valid for the cached column type.
+
+Normal and aggregate queries accept `eq.<column>`, `neq.<column>`, `contains.<column>`, `isnull.<column>`, `gt.<column>`, `gte.<column>`, `lt.<column>` and `lte.<column>` filters. `isnull` takes `true` or `false`; range filters are limited to number, date and timestamp columns. Normal row queries also support `fields`, `sort`, `limit`, `offset`, `total` and `expand`. See “Query parameters” above for the paging limits.
+
+### Compact schema summary
+
+`GET /api/llm/schema` returns text by default, or structured JSON with `format=json`. Use `sources=demo,billing` to restrict the summary:
+
+```http
+GET /api/llm/schema?sources=demo,billing&format=json&values=false
+```
+
+`values=false` is the safe default. `values=true` adds a small, bounded set of distinct values for eligible text columns and can help a model interpret codes, but those are real database values and may be sensitive. Do not enable it for an untrusted caller.
+
+### MCP-capable assistants
+
+The demo uses Spring AI to expose the same six operations over streamable HTTP at `POST /mcp`. It starts enabled locally because `schema-to-entity.llm-enabled` defaults to `true` in the demo; the starter itself defaults LLM support to off. A typical MCP client configuration is:
+
+```json
+{
+  "mcpServers": {
+    "schema-to-entity": {
+      "type": "streamable-http",
+      "url": "http://localhost:8081/mcp"
+    }
+  }
+}
+```
+
+Client configuration keys vary slightly, so use the client’s streamable HTTP transport setting if it does not recognize `type`. Port `8081` is the Compose host port; use `8080` when running the demo directly.
+
+### Safety boundary
+
+- Models never write or submit SQL. `SelectBuilder`/`AggregateBuilder`-style code constructs only `SELECT` statements from cached schema identifiers; all caller values are JDBC bound parameters.
+- Every source, entity, field, filter, sort, group, metric and expansion is checked against the cached schema. Unknown parameters and incompatible values are rejected.
+- Data-source pools are opened read-only, and deployments should also use database users with SELECT-only grants. No LLM or MCP tool implements `INSERT`, `UPDATE`, `DELETE` or DDL.
+- `hidden-columns` are omitted from schema summaries and cannot be selected, filtered, grouped, sorted or returned.
+- Row caps apply at both layers: the LLM tools allow at most 100 rows, while direct data API limits remain bounded by `max-page-size`; aggregate and expansion limits are bounded too.
+- `query-timeout` bounds database execution. Tool output also truncates long text values, and database errors are redacted rather than returning SQL, connection strings or passwords.
+
+These controls limit query capability; they do not authenticate callers. Protect `/api/llm/**`, `/mcp` and the data endpoints before any non-local deployment.
+
 ## Connection layer
 
 The `com.example.dynamicmeta.connection` package provides a parser, policy engine and factory for opening one-off JDBC connections from caller-supplied strings. The drivers shipped by the demo application cover five database families.
