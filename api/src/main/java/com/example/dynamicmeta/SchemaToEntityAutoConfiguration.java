@@ -224,8 +224,9 @@ public class SchemaToEntityAutoConfiguration {
             @ConditionalOnProperty(prefix = "schema-to-entity", name = "llm-enabled",
                     havingValue = "true")
             LlmTools llmTools(SchemaGraphBuilder schemaGraphBuilder, OverlayStore overlayStore,
-                    DataQueryService dataQueryService) {
-                return new LlmTools(schemaGraphBuilder, overlayStore, dataQueryService);
+                    DataQueryService dataQueryService, SchemaSummary schemaSummary) {
+                return new LlmTools(schemaGraphBuilder, overlayStore, dataQueryService,
+                        schemaSummary);
             }
 
             @Bean

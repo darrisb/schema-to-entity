@@ -8,6 +8,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 import com.example.dynamicmeta.connection.ConnectionException;
 import com.example.dynamicmeta.connection.SecretRedactor;
@@ -38,12 +39,14 @@ public final class LlmTools {
     private final SchemaGraphBuilder graphBuilder;
     private final OverlayStore overlayStore;
     private final DataQueryService queryService;
+    private final SchemaSummary schemaSummary;
 
     public LlmTools(SchemaGraphBuilder graphBuilder, OverlayStore overlayStore,
-                    DataQueryService queryService) {
+                    DataQueryService queryService, SchemaSummary schemaSummary) {
         this.graphBuilder = Objects.requireNonNull(graphBuilder, "graphBuilder");
         this.overlayStore = Objects.requireNonNull(overlayStore, "overlayStore");
         this.queryService = Objects.requireNonNull(queryService, "queryService");
+        this.schemaSummary = Objects.requireNonNull(schemaSummary, "schemaSummary");
     }
 
     public List<Map<String, Object>> listSources() {
@@ -118,6 +121,10 @@ public final class LlmTools {
         } catch (Exception exception) {
             return error(exception);
         }
+    }
+
+    public SchemaSummary.Document schemaSummary(Set<String> sources, boolean includeValues) {
+        return schemaSummary.summarize(sources, includeValues);
     }
 
     private GraphIds.EntityId resolvedId(String entityId) {

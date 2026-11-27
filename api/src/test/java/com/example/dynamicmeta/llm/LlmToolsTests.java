@@ -66,7 +66,8 @@ class LlmToolsTests {
         QueryParameterParser queryParser = new QueryParameterParser(properties);
         DataQueryService queries = new DataQueryService(registry, cache, queryParser, properties,
                 () -> new RelationshipExpander(graph, overlay));
-        tools = new LlmTools(graph, overlay, queries);
+        SchemaSummary summary = new SchemaSummary(graph, overlay, cache, registry, properties);
+        tools = new LlmTools(graph, overlay, queries, summary);
     }
 
     @AfterEach void close() { if (registry != null) registry.destroy(); }
@@ -91,6 +92,10 @@ class LlmToolsTests {
         Map<String, Object> aggregate = tools.aggregate("sales:orders", List.of("status"),
                 List.of("count", "sum:total"), Map.of(), List.of("-count"), 20);
         assertThat((List<?>) aggregate.get("rows")).hasSize(2);
+
+        assertThat(tools.schemaSummary(java.util.Set.of("sales"), false).entities())
+                .extracting(SchemaSummary.Entity::id)
+                .containsExactly("sales:accounts", "sales:orders");
     }
 
     @Test

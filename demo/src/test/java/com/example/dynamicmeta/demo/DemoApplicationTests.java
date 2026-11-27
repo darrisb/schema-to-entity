@@ -10,7 +10,15 @@ import com.example.dynamicmeta.data.SourceRegistry;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.core.env.Environment;
+
+import io.modelcontextprotocol.client.McpClient;
+import io.modelcontextprotocol.client.McpSyncClient;
+import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport;
+import io.modelcontextprotocol.server.McpSyncServer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -22,14 +30,59 @@ import static org.assertj.core.api.Assertions.assertThat;
  * show. The sources are validated at startup but connect lazily, so this
  * context test does not require Postgres to be running.
  */
-@SpringBootTest
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class DemoApplicationTests {
+
+    @LocalServerPort
+    private int port;
 
     @Autowired
     private SchemaToEntityProperties properties;
 
     @Autowired
     private SourceRegistry sourceRegistry;
+
+    @Autowired
+    private Environment environment;
+
+    @Autowired
+    private ToolCallbackProvider toolCallbackProvider;
+
+    @Autowired
+    private McpSyncServer mcpServer;
+
+    @Test
+    void mcpServerStartsWithAllSixTools() {
+        assertThat(environment.getProperty("spring.ai.mcp.server.enabled", Boolean.class))
+                .isTrue();
+        assertThat(environment.getProperty("spring.ai.mcp.server.name"))
+                .isEqualTo("schema-to-entity");
+        assertThat(environment.getProperty("spring.ai.mcp.server.protocol"))
+                .isEqualTo("STREAMABLE");
+        assertThat(environment.getProperty(
+                "spring.ai.mcp.server.streamable-http.mcp-endpoint"))
+                .isEqualTo("/mcp");
+        assertThat(mcpServer).isNotNull();
+        assertThat(toolCallbackProvider.getToolCallbacks())
+                .extracting(callback -> callback.getToolDefinition().name())
+                .containsExactlyInAnyOrder("list_sources", "describe_entity", "find_related",
+                        "query_entity", "aggregate", "schema_summary");
+    }
+
+    @Test
+    void mcpClientListsAllSixToolsFromTheStreamableEndpoint() {
+        HttpClientStreamableHttpTransport transport = HttpClientStreamableHttpTransport
+                .builder("http://localhost:" + port)
+                .endpoint("/mcp")
+                .build();
+        try (McpSyncClient client = McpClient.sync(transport).build()) {
+            client.initialize();
+            assertThat(client.listTools().tools())
+                    .extracting(tool -> tool.name())
+                    .containsExactlyInAnyOrder("list_sources", "describe_entity", "find_related",
+                            "query_entity", "aggregate", "schema_summary");
+        }
+    }
 
     @Test
     void dataApiIsEnabledWithTheDemoSource() {
