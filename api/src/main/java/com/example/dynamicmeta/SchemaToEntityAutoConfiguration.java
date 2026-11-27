@@ -20,6 +20,7 @@ import com.example.dynamicmeta.connection.JdbcConnectionFactory;
 import com.example.dynamicmeta.data.DataController;
 import com.example.dynamicmeta.data.DataCorsConfiguration;
 import com.example.dynamicmeta.data.DataQueryService;
+import com.example.dynamicmeta.data.RelationshipExpander;
 import com.example.dynamicmeta.data.DataSourceDefinitions;
 import com.example.dynamicmeta.data.QueryParameterParser;
 import com.example.dynamicmeta.data.SchemaCache;
@@ -111,9 +112,11 @@ public class SchemaToEntityAutoConfiguration {
             SourceRegistry sourceRegistry,
             SchemaCache schemaCache,
             QueryParameterParser queryParameterParser,
-            SchemaToEntityProperties properties) {
+            SchemaToEntityProperties properties,
+            ObjectProvider<RelationshipExpander> relationshipExpander) {
         return new DataQueryService(
-                sourceRegistry, schemaCache, queryParameterParser, properties);
+                sourceRegistry, schemaCache, queryParameterParser, properties,
+                relationshipExpander::getIfAvailable);
     }
 
     @Bean
@@ -186,6 +189,13 @@ public class SchemaToEntityAutoConfiguration {
             SchemaGraphBuilder schemaGraphBuilder(SourceRegistry sourceRegistry,
                     SchemaCache schemaCache) {
                 return new SchemaGraphBuilder(sourceRegistry, schemaCache);
+            }
+
+            @Bean
+            @ConditionalOnMissingBean
+            RelationshipExpander relationshipExpander(SchemaGraphBuilder schemaGraphBuilder,
+                    OverlayStore overlayStore) {
+                return new RelationshipExpander(schemaGraphBuilder, overlayStore);
             }
 
             @Bean

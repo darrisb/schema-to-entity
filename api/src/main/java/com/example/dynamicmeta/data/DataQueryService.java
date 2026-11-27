@@ -23,6 +23,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.LinkedHashSet;
+import java.util.Set;
+import java.util.function.Supplier;
 
 import com.example.dynamicmeta.SchemaToEntityProperties;
 import com.example.dynamicmeta.connection.DatabaseType;
@@ -49,11 +52,20 @@ public final class DataQueryService {
     private final QueryParameterParser queryParameterParser;
     private final AggregateParameterParser aggregateParameterParser;
     private final Duration queryTimeout;
+    private final boolean graphEnabled;
+    private final Supplier<RelationshipExpander> relationshipExpander;
 
     public DataQueryService(SourceRegistry registry,
                             SchemaCache schemaCache,
                             QueryParameterParser queryParameterParser,
                             SchemaToEntityProperties properties) {
+        this(registry, schemaCache, queryParameterParser, properties, () -> null);
+    }
+
+    public DataQueryService(SourceRegistry registry, SchemaCache schemaCache,
+                            QueryParameterParser queryParameterParser,
+                            SchemaToEntityProperties properties,
+                            Supplier<RelationshipExpander> relationshipExpander) {
         this.registry = Objects.requireNonNull(registry, "registry");
         this.schemaCache = Objects.requireNonNull(schemaCache, "schemaCache");
         this.queryParameterParser = Objects.requireNonNull(queryParameterParser,
@@ -62,6 +74,9 @@ public final class DataQueryService {
         Objects.requireNonNull(properties, "properties");
         Duration configured = properties.getQueryTimeout();
         this.queryTimeout = configured == null ? Duration.ZERO : configured;
+        this.graphEnabled = properties.isGraphEnabled();
+        this.relationshipExpander = Objects.requireNonNull(relationshipExpander,
+                "relationshipExpander");
     }
 
     /**
@@ -117,19 +132,153 @@ public final class DataQueryService {
     public DataPage query(String source, String entity,
                           Map<String, List<String>> parameters,
                           boolean includeTotal) throws SQLException {
+        return query(source, entity, parameters, includeTotal, List.of());
+    }
+
+    public DataPage query(String source, String entity,
+                          Map<String, List<String>> parameters,
+                          boolean includeTotal, List<String> expandColumns) throws SQLException {
+        List<String> expansions = validateExpansions(expandColumns);
+        if (!expansions.isEmpty() && !graphEnabled) {
+            throw new IllegalArgumentException("expand requires graph-enabled=true");
+        }
         SourceSchema schema = schemaCache.get(source);
         EntityModel model = schema.entity(entity);
         QuerySpec query = queryParameterParser.parse(model, parameters);
+        for (String expansion : expansions) {
+            resolveColumn(model, expansion);
+        }
+        QuerySpec databaseQuery = withExpansionFields(query, model, expansions);
         SelectBuilder builder = builder(schema);
-        SqlStatement select = builder.select(model, query);
+        SqlStatement select = builder.select(model, databaseQuery);
         SqlStatement count = includeTotal ? builder.buildCount(model, query) : null;
 
         try (Connection connection = registry.get(source).getConnection()) {
             Long total = count == null ? null : executeCount(connection, count, query.limit());
             List<Map<String, Object>> items =
                     executeRows(connection, select, query.limit());
+            if (!expansions.isEmpty()) {
+                items = expand(source, model, items, expansions);
+                items = removeInternalFields(items, query.fields(), model, expansions);
+            }
             return new DataPage(items, total, query.limit(), query.offset());
         }
+    }
+
+    private static QuerySpec withExpansionFields(QuerySpec query, EntityModel model,
+                                                  List<String> expansions) {
+        if (query.fields().isEmpty() || expansions.isEmpty()) {
+            return query;
+        }
+        List<String> fields = new ArrayList<>(query.fields());
+        for (String expansion : expansions) {
+            String actual = resolveColumn(model, expansion).name();
+            if (fields.stream().noneMatch(field -> field.equalsIgnoreCase(actual))) {
+                fields.add(actual);
+            }
+        }
+        return new QuerySpec(fields, query.equals(), query.notEquals(), query.contains(),
+                query.nullChecks(), query.ranges(), query.sorts(), query.limit(), query.offset());
+    }
+
+    private static List<Map<String, Object>> removeInternalFields(
+            List<Map<String, Object>> rows, List<String> requestedFields,
+            EntityModel model, List<String> expansions) {
+        if (requestedFields.isEmpty()) {
+            return rows;
+        }
+        Set<String> requested = new java.util.HashSet<>();
+        requestedFields.forEach(field -> requested.add(field.toLowerCase(java.util.Locale.ROOT)));
+        for (Map<String, Object> row : rows) {
+            for (String expansion : expansions) {
+                String actual = resolveColumn(model, expansion).name();
+                if (!requested.contains(actual.toLowerCase(java.util.Locale.ROOT))) {
+                    row.keySet().removeIf(key -> key.equalsIgnoreCase(actual));
+                }
+            }
+        }
+        return rows;
+    }
+
+    private List<Map<String, Object>> expand(String source, EntityModel model,
+                                              List<Map<String, Object>> rows,
+                                              List<String> columns) throws SQLException {
+        RelationshipExpander expander = relationshipExpander.get();
+        if (expander == null) {
+            throw new IllegalArgumentException("expand requires graph-enabled=true");
+        }
+        List<Map<String, Object>> result = new ArrayList<>(rows.size());
+        for (Map<String, Object> row : rows) {
+            result.add(new LinkedHashMap<>(row));
+        }
+        for (String requested : columns) {
+            ColumnModel sourceColumn = resolveColumn(model, requested);
+            RelationshipExpander.Expansion expansion =
+                    expander.resolve(source, model.name(), sourceColumn.name());
+            SourceSchema targetSchema = schemaCache.get(expansion.targetSource());
+            EntityModel target = targetSchema.entity(expansion.targetEntity());
+            ColumnModel targetColumn = resolveColumn(target, expansion.targetColumn());
+            Set<Object> values = new LinkedHashSet<>();
+            for (Map<String, Object> row : rows) {
+                Object value = value(row, sourceColumn.name());
+                if (value != null && values.size() < 200) {
+                    values.add(value);
+                }
+            }
+            Map<Object, Map<String, Object>> matches = new LinkedHashMap<>();
+            if (!values.isEmpty()) {
+                SqlStatement statement = builder(targetSchema).selectIn(
+                        target, targetColumn.name(), new ArrayList<>(values));
+                try (Connection connection = registry.get(expansion.targetSource()).getConnection()) {
+                    for (Map<String, Object> match : executeRows(connection, statement, 200)) {
+                        matches.putIfAbsent(value(match, targetColumn.name()), match);
+                    }
+                }
+            }
+            for (int i = 0; i < result.size(); i++) {
+                Map<String, Object> expanded = expandedMap(result.get(i));
+                Object key = value(rows.get(i), sourceColumn.name());
+                expanded.put(requested, key == null ? null : matches.get(key));
+            }
+        }
+        return List.copyOf(result);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> expandedMap(Map<String, Object> row) {
+        Object existing = row.get("_expanded");
+        if (existing instanceof Map<?, ?> map) {
+            return (Map<String, Object>) map;
+        }
+        Map<String, Object> expanded = new LinkedHashMap<>();
+        row.put("_expanded", expanded);
+        return expanded;
+    }
+
+    private static Object value(Map<String, Object> row, String column) {
+        for (Map.Entry<String, Object> entry : row.entrySet()) {
+            if (entry.getKey().equalsIgnoreCase(column)) {
+                return entry.getValue();
+            }
+        }
+        return null;
+    }
+
+    static List<String> validateExpansions(List<String> requested) {
+        if (requested == null || requested.isEmpty()) {
+            return List.of();
+        }
+        LinkedHashSet<String> columns = new LinkedHashSet<>();
+        for (String value : requested) {
+            if (value == null) continue;
+            for (String column : value.split(",")) {
+                if (!column.isBlank()) columns.add(column.trim());
+            }
+        }
+        if (columns.size() > 3) {
+            throw new IllegalArgumentException("At most 3 expand columns are allowed");
+        }
+        return List.copyOf(columns);
     }
 
     /** Runs one validated, read-only grouped aggregate query. */

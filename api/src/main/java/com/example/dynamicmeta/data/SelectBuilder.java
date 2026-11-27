@@ -113,6 +113,23 @@ public final class SelectBuilder {
         return new SqlStatement(sql.toString(), parameters);
     }
 
+    /** Builds an internal, schema-validated SELECT using bound IN values. */
+    public SqlStatement selectIn(EntityModel entity, String column, List<?> values) {
+        Objects.requireNonNull(entity, "entity");
+        Objects.requireNonNull(values, "values");
+        if (values.isEmpty()) {
+            throw new IllegalArgumentException("IN values must not be empty");
+        }
+        String resolved = resolveColumn(entity, column);
+        String placeholders = values.stream().map(value -> "?")
+                .collect(Collectors.joining(", "));
+        String sql = "SELECT " + entity.columns().stream()
+                .map(ColumnModel::name).map(this::quote).collect(Collectors.joining(", "))
+                + " FROM " + qualifiedTable(entity)
+                + " WHERE " + quote(resolved) + " IN (" + placeholders + ")";
+        return new SqlStatement(sql, new ArrayList<>(values));
+    }
+
     private String selectList(EntityModel entity, QuerySpec query) {
         List<String> columns = query.fields().isEmpty()
                 ? entity.columns().stream().map(ColumnModel::name).toList()
