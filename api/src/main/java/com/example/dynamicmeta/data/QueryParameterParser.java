@@ -72,6 +72,8 @@ public final class QueryParameterParser {
     private static final String LIMIT = "limit";
     private static final String OFFSET = "offset";
     private static final String EQUALS_PREFIX = "eq.";
+    private static final String NOT_EQUALS_PREFIX = "neq.";
+    private static final String IS_NULL_PREFIX = "isnull.";
     private static final String CONTAINS_PREFIX = "contains.";
     private static final Map<String, QuerySpec.RangeOperator> RANGE_PREFIXES = Map.of(
             "gte.", QuerySpec.RangeOperator.GTE,
@@ -133,7 +135,9 @@ public final class QueryParameterParser {
         List<String> requestedFields = new ArrayList<>();
         List<QuerySpec.Sort> sorts = new ArrayList<>();
         Map<String, Object> equals = new LinkedHashMap<>();
+        Map<String, Object> notEquals = new LinkedHashMap<>();
         Map<String, String> contains = new LinkedHashMap<>();
+        Map<String, Boolean> nullChecks = new LinkedHashMap<>();
         List<QuerySpec.RangeFilter> ranges = new ArrayList<>();
         Set<String> rangeKeys = new HashSet<>();
         Integer limit = null;
@@ -156,6 +160,12 @@ public final class QueryParameterParser {
             } else if (name.startsWith(EQUALS_PREFIX)) {
                 addEquals(columns, entity, equals, contains,
                         name.substring(EQUALS_PREFIX.length()), singleValue(name, values));
+            } else if (name.startsWith(NOT_EQUALS_PREFIX)) {
+                addConvertedFilter(columns, entity, notEquals,
+                        name.substring(NOT_EQUALS_PREFIX.length()), singleValue(name, values));
+            } else if (name.startsWith(IS_NULL_PREFIX)) {
+                addNullCheck(columns, entity, nullChecks,
+                        name.substring(IS_NULL_PREFIX.length()), singleValue(name, values));
             } else if (name.startsWith(CONTAINS_PREFIX)) {
                 addContains(columns, entity, equals, contains,
                         name.substring(CONTAINS_PREFIX.length()), singleValue(name, values));
@@ -173,7 +183,8 @@ public final class QueryParameterParser {
             throw new IllegalArgumentException(
                     "At most " + MAX_SORT_COLUMNS + " sort columns are allowed");
         }
-        if (equals.size() + contains.size() + ranges.size() > MAX_FILTERS) {
+        if (equals.size() + notEquals.size() + contains.size() + nullChecks.size()
+                + ranges.size() > MAX_FILTERS) {
             throw new IllegalArgumentException(
                     "At most " + MAX_FILTERS + " filters are allowed");
         }
@@ -184,7 +195,29 @@ public final class QueryParameterParser {
         }
 
         int effectiveLimit = limit == null ? defaultPageSize : limit;
-        return new QuerySpec(fields, equals, contains, ranges, sorts, effectiveLimit, offset);
+        return new QuerySpec(fields, equals, notEquals, contains, nullChecks, ranges, sorts,
+                effectiveLimit, offset);
+    }
+
+    private void addConvertedFilter(Map<String, ColumnModel> columns, EntityModel entity,
+                                    Map<String, Object> filters, String requestedColumn,
+                                    String rawValue) {
+        ColumnModel column = resolveColumn(columns, entity, requestedColumn);
+        if (filters.put(column.name(), convert(column, rawValue)) != null) {
+            throw new IllegalArgumentException(
+                    "Duplicate filter for column '" + column.name() + "'");
+        }
+    }
+
+    private void addNullCheck(Map<String, ColumnModel> columns, EntityModel entity,
+                              Map<String, Boolean> nullChecks, String requestedColumn,
+                              String rawValue) {
+        ColumnModel column = resolveColumn(columns, entity, requestedColumn);
+        Boolean isNull = parseBoolean(column, rawValue.trim());
+        if (nullChecks.put(column.name(), isNull) != null) {
+            throw new IllegalArgumentException(
+                    "Duplicate filter for column '" + column.name() + "'");
+        }
     }
 
     private void addRange(Map<String, ColumnModel> columns, EntityModel entity,

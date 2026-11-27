@@ -130,6 +130,10 @@ public final class SelectBuilder {
             clauses.add(quote(resolveColumn(entity, entry.getKey())) + " = ?");
             parameters.add(entry.getValue());
         }
+        for (Map.Entry<String, Object> entry : query.notEquals().entrySet()) {
+            clauses.add(quote(resolveColumn(entity, entry.getKey())) + " <> ?");
+            parameters.add(entry.getValue());
+        }
         for (Map.Entry<String, String> entry : query.contains().entrySet()) {
             clauses.add("LOWER(" + quote(resolveColumn(entity, entry.getKey())) + ")"
                     + " LIKE LOWER(?) ESCAPE '" + LIKE_ESCAPE + "'");
@@ -139,6 +143,10 @@ public final class SelectBuilder {
             clauses.add(quote(resolveColumn(entity, range.column())) + " "
                     + range.operator().sql() + " ?");
             parameters.add(range.value());
+        }
+        for (Map.Entry<String, Boolean> entry : query.nullChecks().entrySet()) {
+            clauses.add(quote(resolveColumn(entity, entry.getKey()))
+                    + (entry.getValue() ? " IS NULL" : " IS NOT NULL"));
         }
         if (!clauses.isEmpty()) {
             sql.append(" WHERE ").append(String.join(" AND ", clauses));

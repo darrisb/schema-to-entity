@@ -22,7 +22,9 @@ import java.util.Objects;
  *
  * @param fields   requested columns in request order; empty means all columns
  * @param equals   exact-match filters, column name to value
+ * @param notEquals not-equal filters, column name to value
  * @param contains case-insensitive substring filters, column name to text
+ * @param nullChecks null checks, column name to true for IS NULL or false for IS NOT NULL
  * @param ranges   comparison filters in request order
  * @param sorts    optional ordering in priority order; empty means no ordering
  * @param limit    optional maximum number of rows
@@ -31,7 +33,9 @@ import java.util.Objects;
 public record QuerySpec(
         List<String> fields,
         Map<String, Object> equals,
+        Map<String, Object> notEquals,
         Map<String, String> contains,
+        Map<String, Boolean> nullChecks,
         List<RangeFilter> ranges,
         List<Sort> sorts,
         Integer limit,
@@ -40,7 +44,9 @@ public record QuerySpec(
     public QuerySpec {
         fields = fields == null ? List.of() : List.copyOf(fields);
         equals = copyOf(equals);
+        notEquals = copyOf(notEquals);
         contains = copyOf(contains);
+        nullChecks = copyOf(nullChecks);
         ranges = ranges == null ? List.of() : List.copyOf(ranges);
         sorts = sorts == null ? List.of() : List.copyOf(sorts);
     }
@@ -49,7 +55,7 @@ public record QuerySpec(
     public QuerySpec(List<String> fields, Map<String, Object> equals,
                      Map<String, String> contains, List<Sort> sorts,
                      Integer limit, Integer offset) {
-        this(fields, equals, contains, List.of(), sorts, limit, offset);
+        this(fields, equals, Map.of(), contains, Map.of(), List.of(), sorts, limit, offset);
     }
 
     /**
@@ -68,8 +74,16 @@ public record QuerySpec(
     public QuerySpec(List<String> fields, Map<String, Object> equals,
                      Map<String, String> contains, List<RangeFilter> ranges, Sort sort,
                      Integer limit, Integer offset) {
-        this(fields, equals, contains, ranges, sort == null ? List.of() : List.of(sort),
+        this(fields, equals, Map.of(), contains, Map.of(), ranges,
+                sort == null ? List.of() : List.of(sort),
                 limit, offset);
+    }
+
+    /** Constructor with range filters and multiple sort columns. */
+    public QuerySpec(List<String> fields, Map<String, Object> equals,
+                     Map<String, String> contains, List<RangeFilter> ranges,
+                     List<Sort> sorts, Integer limit, Integer offset) {
+        this(fields, equals, Map.of(), contains, Map.of(), ranges, sorts, limit, offset);
     }
 
     /** Returns true when a limit or an offset was requested. */
