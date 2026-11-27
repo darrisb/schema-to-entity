@@ -35,6 +35,7 @@ import com.example.dynamicmeta.graph.GraphController;
 import com.example.dynamicmeta.graph.OverlayStore;
 import com.example.dynamicmeta.graph.SchemaGraphBuilder;
 import com.example.dynamicmeta.llm.LlmController;
+import com.example.dynamicmeta.llm.LlmTools;
 import com.example.dynamicmeta.llm.SchemaSummary;
 
 import javax.sql.DataSource;
@@ -216,6 +217,15 @@ public class SchemaToEntityAutoConfiguration {
                     SourceRegistry sourceRegistry, SchemaToEntityProperties properties) {
                 return new SchemaSummary(schemaGraphBuilder, overlayStore, schemaCache,
                         sourceRegistry, properties);
+            }
+
+            @Bean
+            @ConditionalOnMissingBean
+            @ConditionalOnProperty(prefix = "schema-to-entity", name = "llm-enabled",
+                    havingValue = "true")
+            LlmTools llmTools(SchemaGraphBuilder schemaGraphBuilder, OverlayStore overlayStore,
+                    DataQueryService dataQueryService) {
+                return new LlmTools(schemaGraphBuilder, overlayStore, dataQueryService);
             }
 
             @Bean
