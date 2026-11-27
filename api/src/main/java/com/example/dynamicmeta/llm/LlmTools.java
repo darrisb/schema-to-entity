@@ -24,6 +24,8 @@ import com.example.dynamicmeta.graph.OverlayApplier;
 import com.example.dynamicmeta.graph.OverlayStore;
 import com.example.dynamicmeta.graph.SchemaGraph;
 import com.example.dynamicmeta.graph.SchemaGraphBuilder;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Small, framework-neutral operations intended for function calling and MCP adapters.
@@ -32,6 +34,7 @@ import com.example.dynamicmeta.graph.SchemaGraphBuilder;
  */
 public final class LlmTools {
 
+    private static final Logger log = LoggerFactory.getLogger(LlmTools.class);
     private static final int DEFAULT_LIMIT = 20;
     private static final int MAX_LIMIT = 100;
     private static final int MAX_TEXT_LENGTH = 500;
@@ -49,13 +52,17 @@ public final class LlmTools {
         this.schemaSummary = Objects.requireNonNull(schemaSummary, "schemaSummary");
     }
 
-    public List<Map<String, Object>> listSources() {
-        List<Map<String, Object>> result = new ArrayList<>();
-        for (GraphSource source : graph().sources()) {
-            result.add(map("name", source.id(), "databaseType", source.databaseType(),
-                    "status", source.status()));
+    public Object listSources() {
+        try {
+            List<Map<String, Object>> result = new ArrayList<>();
+            for (GraphSource source : graph().sources()) {
+                result.add(map("name", source.id(), "databaseType", source.databaseType(),
+                        "status", source.status()));
+            }
+            return List.copyOf(result);
+        } catch (RuntimeException exception) {
+            return error("listSources", null, exception);
         }
-        return List.copyOf(result);
     }
 
     public Map<String, Object> describeEntity(String entityId) {
@@ -72,7 +79,7 @@ public final class LlmTools {
                     "label", entity.label(), "description", entity.description(),
                     "columns", columns, "relationships", relationships(graph, entity)));
         } catch (RuntimeException exception) {
-            return error(exception);
+            return error("describeEntity", entityId, exception);
         }
     }
 
@@ -82,7 +89,7 @@ public final class LlmTools {
             GraphEntity entity = entity(graph, entityId);
             return truncate(relationships(graph, entity));
         } catch (RuntimeException exception) {
-            return error(exception);
+            return error("findRelated", entityId, exception);
         }
     }
 
@@ -100,7 +107,7 @@ public final class LlmTools {
             return truncate(map("items", page.items(), "total", page.total(),
                     "limit", page.limit(), "offset", page.offset()));
         } catch (Exception exception) {
-            return error(exception);
+            return error("queryEntity", entityId, exception);
         }
     }
 
@@ -119,7 +126,7 @@ public final class LlmTools {
             return truncate(map("groups", result.groups(), "metrics", result.metrics(),
                     "rows", result.rows()));
         } catch (Exception exception) {
-            return error(exception);
+            return error("aggregate", entityId, exception);
         }
     }
 
@@ -128,11 +135,10 @@ public final class LlmTools {
     }
 
     private GraphIds.EntityId resolvedId(String entityId) {
-        GraphIds.EntityId id = GraphIds.parseEntityId(entityId);
         // Resolve through the overlay-applied graph first so malformed and unknown graph
         // ids have exactly the same error behavior as the descriptive operations.
-        entity(graph(), entityId);
-        return id;
+        GraphEntity resolved = entity(graph(), entityId);
+        return GraphIds.parseEntityId(resolved.id());
     }
 
     private SchemaGraph graph() {
@@ -213,7 +219,14 @@ public final class LlmTools {
         return values.stream().anyMatch(value -> value.equalsIgnoreCase(requested));
     }
 
-    private static Map<String, Object> error(Exception exception) {
+    private static Map<String, Object> error(String operation, String entityId,
+                                             Exception exception) {
+        if (isDatabaseFailure(exception) || isUnexpectedFailure(exception)) {
+            log.warn("LLM operation {} failed for entity {}: {}", operation,
+                    entityId == null ? "<none>" : entityId,
+                    SecretRedactor.redact(exception.getMessage()));
+            log.debug("LLM operation " + operation + " failed", exception);
+        }
         String message;
         if (exception instanceof SQLTimeoutException) message = "Database query timed out";
         else if (exception instanceof SQLTransientConnectionException) {
@@ -225,6 +238,17 @@ public final class LlmTools {
                 || exception instanceof IllegalArgumentException) message = exception.getMessage();
         else message = "Database query failed";
         return Map.of("error", SecretRedactor.redact(message));
+    }
+
+    private static boolean isDatabaseFailure(Exception exception) {
+        return exception instanceof SQLException || exception instanceof ConnectionException;
+    }
+
+    private static boolean isUnexpectedFailure(Exception exception) {
+        return !(exception instanceof SourceNotFoundException
+                || exception instanceof EntityNotFoundException
+                || exception instanceof IllegalArgumentException
+                || isDatabaseFailure(exception));
     }
 
     @SuppressWarnings("unchecked")

@@ -19,7 +19,7 @@ public final class McpTools {
     }
 
     @Tool(name = "list_sources", description = "List the configured read-only data sources.")
-    public List<Map<String, Object>> listSources() {
+    public Object listSources() {
         return delegate.listSources();
     }
 

@@ -20,7 +20,7 @@ class McpToolsTests {
 
     @Test
     void delegatesEveryOperationAndReturnsTheExactResult() {
-        List<Map<String, Object>> sourcesResult = List.of(Map.of("name", "demo"));
+        Object sourcesResult = List.of(Map.of("name", "demo"));
         Map<String, Object> descriptionResult = Map.of("id", "demo:orders");
         Object relatedResult = List.of(Map.of("entityId", "demo:customers"));
         Map<String, Object> queryResult = Map.of("items", List.of());

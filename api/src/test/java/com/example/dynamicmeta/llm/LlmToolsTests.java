@@ -28,6 +28,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class LlmToolsTests {
 
@@ -37,6 +39,9 @@ class LlmToolsTests {
     @TempDir Path tempDir;
     private SourceRegistry registry;
     private LlmTools tools;
+    private SchemaGraphBuilder graph;
+    private DataQueryService queries;
+    private SchemaSummary summary;
 
     @BeforeEach
     void setUp() throws Exception {
@@ -61,12 +66,12 @@ class LlmToolsTests {
                 factory, parser, Duration.ofSeconds(5));
         SchemaCache cache = new SchemaCache(registry,
                 new SchemaDiscoveryService(null, properties, policy, factory), properties);
-        SchemaGraphBuilder graph = new SchemaGraphBuilder(registry, cache);
+        graph = new SchemaGraphBuilder(registry, cache);
         OverlayStore overlay = new OverlayStore(tempDir.resolve("overlay.json"));
         QueryParameterParser queryParser = new QueryParameterParser(properties);
-        DataQueryService queries = new DataQueryService(registry, cache, queryParser, properties,
+        queries = new DataQueryService(registry, cache, queryParser, properties,
                 () -> new RelationshipExpander(graph, overlay));
-        SchemaSummary summary = new SchemaSummary(graph, overlay, cache, registry, properties);
+        summary = new SchemaSummary(graph, overlay, cache, registry, properties);
         tools = new LlmTools(graph, overlay, queries, summary);
     }
 
@@ -74,14 +79,20 @@ class LlmToolsTests {
 
     @Test
     void exposesEveryOperationAcrossTwoSources() {
-        assertThat(tools.listSources()).extracting(source -> source.get("name"))
+        assertThat((List<Map<String, Object>>) tools.listSources())
+                .extracting(source -> source.get("name"))
                 .containsExactly("crm", "sales");
 
         Map<String, Object> description = tools.describeEntity("sales:orders");
         assertThat(description).containsEntry("id", "sales:orders");
         assertThat((List<?>) description.get("columns")).isNotEmpty();
         assertThat((List<?>) description.get("relationships")).isNotEmpty();
-        assertThat((List<?>) tools.findRelated("sales:orders")).isNotEmpty();
+        assertThat((List<Map<String, Object>>) tools.findRelated("sales:orders"))
+                .anySatisfy(relationship -> assertThat(relationship)
+                        .containsEntry("entityId", "sales:accounts")
+                        .containsEntry("direction", "outgoing")
+                        .containsEntry("fromColumn", "account_id")
+                        .containsEntry("toColumn", "id"));
 
         Map<String, Object> page = tools.queryEntity("sales:orders",
                 Map.of("eq.status", "PAID", "gte.total", "10"),
@@ -109,6 +120,40 @@ class LlmToolsTests {
         @SuppressWarnings("unchecked")
         String name = (String) ((List<Map<String, Object>>) page.get("items")).getFirst().get("NAME");
         assertThat(name).hasSize(500).endsWith("…");
+    }
+
+    @Test
+    void listSourcesReturnsErrorWhenOverlayStoreFails() {
+        OverlayStore failingOverlay = mock(OverlayStore.class);
+        when(failingOverlay.overlay()).thenThrow(new IllegalStateException("overlay failed"));
+
+        assertThat(new LlmTools(graph, failingOverlay, queries, summary).listSources())
+                .isEqualTo(Map.of("error", "Database query failed"));
+    }
+
+    @Test
+    void dataOperationsReturnConsistentErrorsForInvalidEntityIds() {
+        for (String entityId : new String[] {"sales:missing", "malformed", null}) {
+            String expected = entityId == null || "malformed".equals(entityId)
+                    ? "entityId must look like source:entity"
+                    : "Unknown entity: sales:missing";
+            assertThat(tools.queryEntity(entityId, Map.of(), List.of(), List.of(), 20,
+                    List.of())).containsEntry("error", expected);
+            assertThat(tools.aggregate(entityId, List.of(), List.of("count"), Map.of(),
+                    List.of(), 20)).containsEntry("error", expected);
+            assertThat((Map<String, Object>) tools.findRelated(entityId))
+                    .containsEntry("error", expected);
+        }
+    }
+
+    @Test
+    void rejectsLimitsOutsideToolBounds() {
+        for (int limit : new int[] {0, 101}) {
+            assertThat(tools.queryEntity("sales:orders", Map.of(), List.of(), List.of(),
+                    limit, List.of())).containsKey("error");
+            assertThat(tools.aggregate("sales:orders", List.of(), List.of("count"),
+                    Map.of(), List.of(), limit)).containsKey("error");
+        }
     }
 
     private static SourceProperties source(String url) {
