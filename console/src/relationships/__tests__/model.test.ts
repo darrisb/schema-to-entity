@@ -181,9 +181,17 @@ test("groupRelationships does not mutate the graph", () => {
     relationship("a:b.x->demo:users.id", "a:b.x", "demo:users.id", "proposed", { confidence: 0.6 }),
   ];
   const source = demoGraph(relationships);
-  groupRelationships(source);
+  // demoGraph stores this array by reference, so comparing the ids against a
+  // snapshot catches an in-place sort of graph.relationships; deepEqual of the
+  // array against itself would always pass.
+  const before = relationships.map((r) => r.id);
+  const groups = groupRelationships(source);
 
-  assert.deepEqual(source.relationships, relationships);
+  assert.deepEqual(relationships.map((r) => r.id), before);
+  assert.notEqual(groups.proposed, relationships);
+  assert.notEqual(groups.confirmed, relationships);
+  assert.notEqual(groups.declared, relationships);
+  assert.notEqual(groups.rejected, relationships);
 });
 
 test("describeEnd uses overlay labels when set and names otherwise", () => {
