@@ -130,6 +130,25 @@ public final class SelectBuilder {
         return new SqlStatement(sql, new ArrayList<>(values));
     }
 
+    /**
+     * Builds the bounded distinct-value lookup used by schema summaries. Both
+     * identifiers are resolved from the cached schema and the limit is bound,
+     * so this remains an internal, read-only SELECT.
+     */
+    public SqlStatement selectDistinct(EntityModel entity, String column, int limit) {
+        Objects.requireNonNull(entity, "entity");
+        if (limit < 1) {
+            throw new IllegalArgumentException("limit must be positive");
+        }
+        String resolved = resolveColumn(entity, column);
+        StringBuilder sql = new StringBuilder("SELECT DISTINCT ")
+                .append(quote(resolved)).append(" FROM ").append(qualifiedTable(entity))
+                .append(" ORDER BY ").append(quote(resolved));
+        List<Object> parameters = new ArrayList<>();
+        appendPaging(sql, limit, null, parameters);
+        return new SqlStatement(sql.toString(), parameters);
+    }
+
     private String selectList(EntityModel entity, QuerySpec query) {
         List<String> columns = query.fields().isEmpty()
                 ? entity.columns().stream().map(ColumnModel::name).toList()

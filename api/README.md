@@ -126,6 +126,7 @@ schema-to-entity:
 |---|---|---|
 | `schema-to-entity.data-api-enabled` | `false` | Registers the read-only data API and its endpoints. |
 | `schema-to-entity.graph-enabled` | `false` | Builds the combined schema document and registers the `/api/graph/**` endpoints. Requires `data-api-enabled`. See "Combined schema document" below. |
+| `schema-to-entity.llm-enabled` | `false` | Registers the compact read-only `/api/llm/schema` summary endpoint. Requires `graph-enabled`. |
 | `schema-to-entity.overlay-file` | `./schema-overlay.json` | JSON file keeping the graph's overlay edits. See "The overlay file" below. |
 | `schema-to-entity.sources` | `{}` | Named read-only sources, keyed by source name. |
 | `schema-to-entity.max-page-size` | `200` | Largest `limit` a caller may request. |

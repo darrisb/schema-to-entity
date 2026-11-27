@@ -69,6 +69,8 @@ public class SchemaToEntityProperties {
      * and should keep them behind authentication and authorization.
      */
     private boolean graphEnabled = false;
+    /** Off by default: exposes a compact schema summary for language models. */
+    private boolean llmEnabled = false;
     /** Maximum number of rows a data API query may return. */
     private int maxPageSize = 200;
     /** Number of rows a data API query returns when the caller does not specify one. */
@@ -242,6 +244,14 @@ public class SchemaToEntityProperties {
 
     public void setGraphEnabled(boolean graphEnabled) {
         this.graphEnabled = graphEnabled;
+    }
+
+    public boolean isLlmEnabled() {
+        return llmEnabled;
+    }
+
+    public void setLlmEnabled(boolean llmEnabled) {
+        this.llmEnabled = llmEnabled;
     }
 
     public List<String> getDataAllowedOrigins() {

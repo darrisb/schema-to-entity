@@ -34,6 +34,8 @@ import com.example.dynamicmeta.drift.SnapshotStore;
 import com.example.dynamicmeta.graph.GraphController;
 import com.example.dynamicmeta.graph.OverlayStore;
 import com.example.dynamicmeta.graph.SchemaGraphBuilder;
+import com.example.dynamicmeta.llm.LlmController;
+import com.example.dynamicmeta.llm.SchemaSummary;
 
 import javax.sql.DataSource;
 
@@ -203,6 +205,25 @@ public class SchemaToEntityAutoConfiguration {
             GraphController graphController(SchemaGraphBuilder schemaGraphBuilder,
                     OverlayStore overlayStore) {
                 return new GraphController(schemaGraphBuilder, overlayStore);
+            }
+
+            @Bean
+            @ConditionalOnMissingBean
+            @ConditionalOnProperty(prefix = "schema-to-entity", name = "llm-enabled",
+                    havingValue = "true")
+            SchemaSummary schemaSummary(SchemaGraphBuilder schemaGraphBuilder,
+                    OverlayStore overlayStore, SchemaCache schemaCache,
+                    SourceRegistry sourceRegistry, SchemaToEntityProperties properties) {
+                return new SchemaSummary(schemaGraphBuilder, overlayStore, schemaCache,
+                        sourceRegistry, properties);
+            }
+
+            @Bean
+            @ConditionalOnMissingBean
+            @ConditionalOnProperty(prefix = "schema-to-entity", name = "llm-enabled",
+                    havingValue = "true")
+            LlmController llmController(SchemaSummary schemaSummary) {
+                return new LlmController(schemaSummary);
             }
 
             /**
