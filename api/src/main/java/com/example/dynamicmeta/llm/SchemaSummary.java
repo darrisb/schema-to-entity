@@ -32,17 +32,21 @@ import com.example.dynamicmeta.graph.OverlayStore;
 import com.example.dynamicmeta.graph.SchemaGraph;
 import com.example.dynamicmeta.graph.SchemaGraphBuilder;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 /** Builds the compact, read-only schema description exposed under /api/llm. */
 public final class SchemaSummary {
 
     private static final int MAX_VALUES = 20;
+    private static final Logger log = LoggerFactory.getLogger(SchemaSummary.class);
 
     private final SchemaGraphBuilder graphBuilder;
     private final OverlayStore overlayStore;
     private final SchemaCache schemaCache;
     private final SourceRegistry registry;
     private final Duration queryTimeout;
-    private final Map<ValueCacheKey, List<String>> valueCache = new ConcurrentHashMap<>();
+    private final Map<String, SourceValueCache> valueCache = new ConcurrentHashMap<>();
 
     public SchemaSummary(SchemaGraphBuilder graphBuilder, OverlayStore overlayStore,
                          SchemaCache schemaCache, SourceRegistry registry,
@@ -117,19 +121,33 @@ public final class SchemaSummary {
     }
 
     private List<String> values(GraphEntity graphEntity, GraphColumn graphColumn) {
-        SourceSchema schema = schemaCache.get(graphEntity.source());
-        String version = schemaCache.schemaVersion(graphEntity.source());
-        ValueCacheKey key = new ValueCacheKey(graphEntity.source(), version,
-                graphEntity.name(), graphColumn.name());
-        return valueCache.computeIfAbsent(key, ignored -> readValues(schema, graphEntity, graphColumn));
-    }
-
-    private List<String> readValues(SourceSchema schema, GraphEntity graphEntity,
-                                    GraphColumn graphColumn) {
-        EntityModel entity = schema.entity(graphEntity.name());
+        SchemaCache.SchemaSnapshot snapshot = schemaCache.snapshot(graphEntity.source());
+        EntityModel entity = snapshot.schema().entity(graphEntity.name());
         ColumnModel column = entity.columns().stream()
                 .filter(candidate -> candidate.name().equalsIgnoreCase(graphColumn.name()))
                 .findFirst().orElseThrow();
+        if (isLargeObjectText(column.type())) return List.of();
+
+        SourceValueCache sourceCache = valueCache.compute(graphEntity.source(), (source, current) ->
+                current != null && current.generation() == snapshot.generation()
+                        ? current : new SourceValueCache(snapshot.generation(), new ConcurrentHashMap<>()));
+        ColumnKey key = new ColumnKey(graphEntity.name(), graphColumn.name());
+        List<String> cached = sourceCache.values().get(key);
+        if (cached != null) return cached;
+        try {
+            List<String> loaded = readValues(snapshot.schema(), graphEntity, column);
+            List<String> raced = sourceCache.values().putIfAbsent(key, loaded);
+            return raced == null ? loaded : raced;
+        } catch (SQLException | ConnectionException exception) {
+            log.warn("Distinct value lookup failed for source '{}', entity '{}', column '{}'; values omitted",
+                    graphEntity.source(), graphEntity.name(), graphColumn.name());
+            return List.of();
+        }
+    }
+
+    private List<String> readValues(SourceSchema schema, GraphEntity graphEntity,
+                                    ColumnModel column) throws SQLException {
+        EntityModel entity = schema.entity(graphEntity.name());
         DatabaseType type = DatabaseType.fromId(schema.databaseType());
         if (type == null) throw new IllegalArgumentException("Unsupported database type");
         SqlStatement select = new SelectBuilder(type, schema.catalog(), schema.schema())
@@ -151,11 +169,17 @@ public final class SchemaSummary {
                     if (value != null) values.add(String.valueOf(value));
                 }
             }
-        } catch (SQLException exception) {
-            throw new ConnectionException("Distinct value lookup failed", exception);
         }
         values.sort(String::compareTo);
         return List.copyOf(values);
+    }
+
+    static boolean isLargeObjectText(String type) {
+        if (type == null) return false;
+        String normalized = type.toLowerCase(java.util.Locale.ROOT);
+        return normalized.contains("clob") || normalized.contains("text")
+                || normalized.contains("long") || normalized.contains("memo")
+                || normalized.contains("large object");
     }
 
     private int timeoutSeconds() {
@@ -202,5 +226,7 @@ public final class SchemaSummary {
         public Column { values = List.copyOf(values); }
     }
 
-    private record ValueCacheKey(String source, String version, String entity, String column) { }
+    private record ColumnKey(String entity, String column) { }
+
+    private record SourceValueCache(long generation, Map<ColumnKey, List<String>> values) { }
 }

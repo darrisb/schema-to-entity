@@ -51,6 +51,7 @@ class SchemaSummaryTests {
     private SourceRegistry registry;
     private OverlayStore overlay;
     private SchemaSummary summary;
+    private SchemaCache cache;
     private MockMvc mvc;
 
     @BeforeEach
@@ -64,7 +65,7 @@ class SchemaSummaryTests {
                 FACTORY, PARSER, Duration.ofSeconds(10));
         SchemaDiscoveryService discovery = new SchemaDiscoveryService(null, properties,
                 POLICY, FACTORY);
-        SchemaCache cache = new SchemaCache(registry, discovery, properties);
+        cache = new SchemaCache(registry, discovery, properties);
         SchemaGraphBuilder graph = new SchemaGraphBuilder(registry, cache);
         overlay = new OverlayStore(tempDir.resolve("overlay.json"));
         summary = new SchemaSummary(graph, overlay, cache, registry, properties);
@@ -111,7 +112,52 @@ class SchemaSummaryTests {
         mvc.perform(get("/api/llm/schema").param("format", "json").param("values", "true"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.entities[0].id").value("commerce:orders"))
-                .andExpect(jsonPath("$.entities[0].columns[2].values.length()").value(2));
+                .andExpect(jsonPath("$.entities[0].columns[3].values.length()").value(2));
+    }
+
+    @Test
+    void failedColumnLookupIsEmptyAndEveryEntityStillAppears() throws Exception {
+        // Prime the schema, then make just the cached STATUS column impossible to query.
+        cache.get("commerce");
+        try (Connection connection = dataSource(COMMERCE_URL).getConnection();
+             Statement statement = connection.createStatement()) {
+            statement.execute("alter table orders drop column status");
+        }
+
+        mvc.perform(get("/api/llm/schema").param("format", "json").param("values", "true"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.entities.length()").value(2))
+                .andExpect(jsonPath("$.entities[0].id").value("commerce:orders"))
+                .andExpect(jsonPath("$.entities[0].columns[3].values.length()").value(0))
+                .andExpect(jsonPath("$.entities[1].id").value("crm:customers"));
+    }
+
+    @Test
+    void clobTextColumnHasNoValues() throws Exception {
+        mvc.perform(get("/api/llm/schema").param("format", "json").param("values", "true"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.entities[0].columns[2].name").value("NOTES"))
+                .andExpect(jsonPath("$.entities[0].columns[2].values.length()").value(0));
+
+        assertThat(SchemaSummary.isLargeObjectText("CLOB CHARACTER LARGE OBJECT"))
+                .isTrue();
+    }
+
+    @Test
+    void refreshedSchemaDropsCachedValues() throws Exception {
+        assertThat(summary.text(summary.summarize(null, true)))
+                .contains("STATUS TEXT [values: NEW | PAID]")
+                .doesNotContain("SHIPPED");
+        try (Connection connection = dataSource(COMMERCE_URL).getConnection();
+             Statement statement = connection.createStatement()) {
+            statement.execute("insert into orders values (4, 4, 'SHIPPED', 'later')");
+        }
+
+        assertThat(summary.text(summary.summarize(null, true))).doesNotContain("SHIPPED");
+        cache.refresh("commerce");
+
+        assertThat(summary.text(summary.summarize(null, true)))
+                .contains("STATUS TEXT [values: NEW | PAID | SHIPPED]");
     }
 
     private static SourceProperties source(String url, List<String> hidden) {
@@ -143,8 +189,10 @@ class SchemaSummaryTests {
         JdbcDataSource commerce = dataSource(COMMERCE_URL);
         try (Connection connection = commerce.getConnection(); Statement statement = connection.createStatement()) {
             statement.execute("DROP ALL OBJECTS");
-            statement.execute("create table orders (id bigint primary key, customer_id bigint, status varchar(20))");
-            statement.execute("insert into orders values (1, 1, 'NEW'), (2, 2, 'PAID'), (3, 3, 'NEW')");
+            statement.execute("create table orders (id bigint primary key, customer_id bigint, "
+                    + "status varchar(20), notes clob)");
+            statement.execute("insert into orders values "
+                    + "(1, 1, 'NEW', 'one'), (2, 2, 'PAID', 'two'), (3, 3, 'NEW', 'three')");
         }
     }
 
