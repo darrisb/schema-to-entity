@@ -7,11 +7,13 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 import com.example.dynamicmeta.SchemaToEntityProperties;
 
@@ -34,6 +36,8 @@ import com.example.dynamicmeta.SchemaToEntityProperties;
  *   <li>{@code eq.<column>=value} adds an exact-match filter</li>
  *   <li>{@code contains.<column>=text} adds a case-insensitive substring
  *       filter; only {@link ColumnCategory#TEXT} columns are accepted</li>
+ *   <li>{@code gt.}, {@code gte.}, {@code lt.}, and {@code lte.} add range
+ *       filters for number, date, and timestamp columns</li>
  * </ul>
  * The {@code eq.} and {@code contains.} prefixes keep filters from clashing
  * with columns named like reserved parameters such as {@code limit}.
@@ -56,7 +60,7 @@ import com.example.dynamicmeta.SchemaToEntityProperties;
  */
 public final class QueryParameterParser {
 
-    /** Maximum number of filter parameters ({@code eq.} plus {@code contains.}). */
+    /** Maximum number of equality, contains, and range filter parameters. */
     public static final int MAX_FILTERS = 10;
     /** Maximum number of sort columns in one request. */
     public static final int MAX_SORT_COLUMNS = 3;
@@ -69,6 +73,11 @@ public final class QueryParameterParser {
     private static final String OFFSET = "offset";
     private static final String EQUALS_PREFIX = "eq.";
     private static final String CONTAINS_PREFIX = "contains.";
+    private static final Map<String, QuerySpec.RangeOperator> RANGE_PREFIXES = Map.of(
+            "gte.", QuerySpec.RangeOperator.GTE,
+            "lte.", QuerySpec.RangeOperator.LTE,
+            "gt.", QuerySpec.RangeOperator.GT,
+            "lt.", QuerySpec.RangeOperator.LT);
 
     private final int defaultPageSize;
     private final int maxPageSize;
@@ -125,6 +134,8 @@ public final class QueryParameterParser {
         List<QuerySpec.Sort> sorts = new ArrayList<>();
         Map<String, Object> equals = new LinkedHashMap<>();
         Map<String, String> contains = new LinkedHashMap<>();
+        List<QuerySpec.RangeFilter> ranges = new ArrayList<>();
+        Set<String> rangeKeys = new HashSet<>();
         Integer limit = null;
         Integer offset = null;
 
@@ -148,6 +159,11 @@ public final class QueryParameterParser {
             } else if (name.startsWith(CONTAINS_PREFIX)) {
                 addContains(columns, entity, equals, contains,
                         name.substring(CONTAINS_PREFIX.length()), singleValue(name, values));
+            } else if (rangePrefix(name) != null) {
+                String prefix = rangePrefix(name);
+                addRange(columns, entity, ranges, rangeKeys, equals.size() + contains.size(),
+                        RANGE_PREFIXES.get(prefix), name.substring(prefix.length()),
+                        singleValue(name, values));
             } else {
                 throw new IllegalArgumentException("Unknown query parameter '" + name + "'");
             }
@@ -157,7 +173,7 @@ public final class QueryParameterParser {
             throw new IllegalArgumentException(
                     "At most " + MAX_SORT_COLUMNS + " sort columns are allowed");
         }
-        if (equals.size() + contains.size() > MAX_FILTERS) {
+        if (equals.size() + contains.size() + ranges.size() > MAX_FILTERS) {
             throw new IllegalArgumentException(
                     "At most " + MAX_FILTERS + " filters are allowed");
         }
@@ -168,7 +184,38 @@ public final class QueryParameterParser {
         }
 
         int effectiveLimit = limit == null ? defaultPageSize : limit;
-        return new QuerySpec(fields, equals, contains, sorts, effectiveLimit, offset);
+        return new QuerySpec(fields, equals, contains, ranges, sorts, effectiveLimit, offset);
+    }
+
+    private void addRange(Map<String, ColumnModel> columns, EntityModel entity,
+                          List<QuerySpec.RangeFilter> ranges, Set<String> rangeKeys,
+                          int otherFilterCount, QuerySpec.RangeOperator operator,
+                          String requestedColumn, String rawValue) {
+        ColumnModel column = resolveColumn(columns, entity, requestedColumn);
+        if (column.category() != ColumnCategory.NUMBER
+                && column.category() != ColumnCategory.DATE
+                && column.category() != ColumnCategory.TIMESTAMP) {
+            throw new IllegalArgumentException("Range filter is only supported for NUMBER, DATE "
+                    + "and TIMESTAMP columns, not '" + column.name() + "'");
+        }
+        String key = operator.name() + "\u0000" + column.name().toLowerCase(Locale.ROOT);
+        if (!rangeKeys.add(key)) {
+            throw new IllegalArgumentException(
+                    "Duplicate filter for column '" + column.name() + "'");
+        }
+        ranges.add(new QuerySpec.RangeFilter(column.name(), operator, convert(column, rawValue)));
+        if (otherFilterCount + ranges.size() > MAX_FILTERS) {
+            throw filterLimit();
+        }
+    }
+
+    private static String rangePrefix(String name) {
+        for (String prefix : RANGE_PREFIXES.keySet()) {
+            if (name.startsWith(prefix)) {
+                return prefix;
+            }
+        }
+        return null;
     }
 
     private void addEquals(Map<String, ColumnModel> columns, EntityModel entity,

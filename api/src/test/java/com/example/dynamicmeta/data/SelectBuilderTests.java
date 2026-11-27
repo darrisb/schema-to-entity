@@ -66,6 +66,45 @@ class SelectBuilderTests {
     }
 
     @Test
+    void rangeOperatorsBuildBoundSelectAndCountClauses() {
+        QuerySpec query = new QuerySpec(List.of(), Map.of(), Map.of(), List.of(
+                new QuerySpec.RangeFilter("ID", QuerySpec.RangeOperator.GT, 10),
+                new QuerySpec.RangeFilter("ID", QuerySpec.RangeOperator.GTE, 11),
+                new QuerySpec.RangeFilter("ID", QuerySpec.RangeOperator.LT, 20),
+                new QuerySpec.RangeFilter("ID", QuerySpec.RangeOperator.LTE, 19)),
+                List.of(), null, null);
+
+        SqlStatement select = builder(DatabaseType.POSTGRESQL, null, "public")
+                .select(CUSTOMERS, query);
+        SqlStatement count = builder(DatabaseType.POSTGRESQL, null, "public")
+                .buildCount(CUSTOMERS, query);
+
+        assertThat(select.sql()).isEqualTo(
+                "SELECT \"ID\", \"NAME\", \"EMAIL\" FROM \"public\".\"CUSTOMERS\""
+                        + " WHERE \"ID\" > ? AND \"ID\" >= ? AND \"ID\" < ? AND \"ID\" <= ?");
+        assertThat(select.parameters()).containsExactly(10, 11, 20, 19);
+        assertThat(count.sql()).isEqualTo(
+                "SELECT COUNT(*) FROM \"public\".\"CUSTOMERS\""
+                        + " WHERE \"ID\" > ? AND \"ID\" >= ? AND \"ID\" < ? AND \"ID\" <= ?");
+        assertThat(count.parameters()).containsExactly(10, 11, 20, 19);
+    }
+
+    @Test
+    void rangeAndEqualsFiltersCombineWithAnd() {
+        QuerySpec query = new QuerySpec(List.of(), Map.of("NAME", "Acme"), Map.of(),
+                List.of(new QuerySpec.RangeFilter("ID", QuerySpec.RangeOperator.GTE, 100)),
+                List.of(), null, null);
+
+        SqlStatement statement = builder(DatabaseType.POSTGRESQL, null, "public")
+                .select(CUSTOMERS, query);
+
+        assertThat(statement.sql()).isEqualTo(
+                "SELECT \"ID\", \"NAME\", \"EMAIL\" FROM \"public\".\"CUSTOMERS\""
+                        + " WHERE \"NAME\" = ? AND \"ID\" >= ?");
+        assertThat(statement.parameters()).containsExactly("Acme", 100);
+    }
+
+    @Test
     void sortDescending() {
         SqlStatement statement = builder(DatabaseType.POSTGRESQL, null, "public")
                 .select(CUSTOMERS, spec(

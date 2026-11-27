@@ -135,6 +135,11 @@ public final class SelectBuilder {
                     + " LIKE LOWER(?) ESCAPE '" + LIKE_ESCAPE + "'");
             parameters.add("%" + escapeLike(entry.getValue()) + "%");
         }
+        for (QuerySpec.RangeFilter range : query.ranges()) {
+            clauses.add(quote(resolveColumn(entity, range.column())) + " "
+                    + range.operator().sql() + " ?");
+            parameters.add(range.value());
+        }
         if (!clauses.isEmpty()) {
             sql.append(" WHERE ").append(String.join(" AND ", clauses));
         }
