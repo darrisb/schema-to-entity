@@ -125,26 +125,34 @@ public final class SelectBuilder {
 
     private void appendWhere(StringBuilder sql, EntityModel entity, QuerySpec query,
                              List<Object> parameters) {
+        appendWhere(sql, entity, query.equals(), query.notEquals(), query.contains(),
+                query.nullChecks(), query.ranges(), parameters);
+    }
+
+    void appendWhere(StringBuilder sql, EntityModel entity,
+                     Map<String, Object> equals, Map<String, Object> notEquals,
+                     Map<String, String> contains, Map<String, Boolean> nullChecks,
+                     List<QuerySpec.RangeFilter> ranges, List<Object> parameters) {
         List<String> clauses = new ArrayList<>();
-        for (Map.Entry<String, Object> entry : query.equals().entrySet()) {
+        for (Map.Entry<String, Object> entry : equals.entrySet()) {
             clauses.add(quote(resolveColumn(entity, entry.getKey())) + " = ?");
             parameters.add(entry.getValue());
         }
-        for (Map.Entry<String, Object> entry : query.notEquals().entrySet()) {
+        for (Map.Entry<String, Object> entry : notEquals.entrySet()) {
             clauses.add(quote(resolveColumn(entity, entry.getKey())) + " <> ?");
             parameters.add(entry.getValue());
         }
-        for (Map.Entry<String, String> entry : query.contains().entrySet()) {
+        for (Map.Entry<String, String> entry : contains.entrySet()) {
             clauses.add("LOWER(" + quote(resolveColumn(entity, entry.getKey())) + ")"
                     + " LIKE LOWER(?) ESCAPE '" + LIKE_ESCAPE + "'");
             parameters.add("%" + escapeLike(entry.getValue()) + "%");
         }
-        for (QuerySpec.RangeFilter range : query.ranges()) {
+        for (QuerySpec.RangeFilter range : ranges) {
             clauses.add(quote(resolveColumn(entity, range.column())) + " "
                     + range.operator().sql() + " ?");
             parameters.add(range.value());
         }
-        for (Map.Entry<String, Boolean> entry : query.nullChecks().entrySet()) {
+        for (Map.Entry<String, Boolean> entry : nullChecks.entrySet()) {
             clauses.add(quote(resolveColumn(entity, entry.getKey()))
                     + (entry.getValue() ? " IS NULL" : " IS NOT NULL"));
         }
@@ -177,8 +185,11 @@ public final class SelectBuilder {
     }
 
     private void appendPaging(StringBuilder sql, QuerySpec query, List<Object> parameters) {
-        Integer limit = query.limit();
-        Integer offset = query.offset();
+        appendPaging(sql, query.limit(), query.offset(), parameters);
+    }
+
+    void appendPaging(StringBuilder sql, Integer limit, Integer offset,
+                      List<Object> parameters) {
         if (limit == null && offset == null) {
             return;
         }
@@ -210,7 +221,7 @@ public final class SelectBuilder {
         }
     }
 
-    private String qualifiedTable(EntityModel entity) {
+    String qualifiedTable(EntityModel entity) {
         List<String> parts = new ArrayList<>(3);
         if (includesCatalog() && isNotBlank(catalog)) {
             parts.add(quote(catalog));
@@ -233,7 +244,7 @@ public final class SelectBuilder {
         return databaseType == DatabaseType.MYSQL || databaseType == DatabaseType.MARIADB;
     }
 
-    private String quote(String identifier) {
+    String quote(String identifier) {
         Objects.requireNonNull(identifier, "identifier");
         return switch (databaseType) {
             case MYSQL, MARIADB -> "`" + identifier.replace("`", "``") + "`";
@@ -246,7 +257,7 @@ public final class SelectBuilder {
      * Resolves a caller-supplied column name to the discovered column name,
      * ignoring case so quoted identifiers keep the database's own spelling.
      */
-    private String resolveColumn(EntityModel entity, String requested) {
+    String resolveColumn(EntityModel entity, String requested) {
         if (requested != null) {
             for (ColumnModel column : entity.columns()) {
                 if (column.name().equalsIgnoreCase(requested)) {
