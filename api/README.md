@@ -748,7 +748,18 @@ GET /api/llm/schema?sources=demo,billing&format=json&values=false
 
 ### MCP-capable assistants
 
-The demo uses Spring AI to expose the same six operations over streamable HTTP at `POST /mcp`. It starts enabled locally because `schema-to-entity.llm-enabled` defaults to `true` in the demo; the starter itself defaults LLM support to off. A typical MCP client configuration is:
+The demo uses Spring AI to expose the same six operations over streamable HTTP at `/mcp`: clients use `POST` for requests, `GET` for the server event stream and `DELETE` to end a session. It starts enabled locally because `schema-to-entity.llm-enabled` defaults to `true` in the demo; the starter itself defaults LLM support to off.
+
+| MCP tool | Parameters |
+|---|---|
+| `list_sources` | *(none)* |
+| `describe_entity` | `entityId` |
+| `find_related` | `entityId` |
+| `query_entity` | `entityId`, `filters`, `fields`, `sort`, `limit`, `expand` |
+| `aggregate` | `entityId`, `group`, `metrics`, `filters`, `sort`, `limit` |
+| `schema_summary` | `sources`, `includeValues` |
+
+A typical MCP client configuration is:
 
 ```json
 {
@@ -772,7 +783,7 @@ Client configuration keys vary slightly, so use the client’s streamable HTTP t
 - Row caps apply at both layers: the LLM tools allow at most 100 rows, while direct data API limits remain bounded by `max-page-size`; aggregate and expansion limits are bounded too.
 - `query-timeout` bounds database execution. Tool output also truncates long text values, and database errors are redacted rather than returning SQL, connection strings or passwords.
 
-These controls limit query capability; they do not authenticate callers. Protect `/api/llm/**`, `/mcp` and the data endpoints before any non-local deployment.
+These controls limit query capability; they do not authenticate callers. Protect `/api/llm/**`, every HTTP method on `/mcp`, and the data endpoints before any non-local deployment.
 
 ## Connection layer
 
