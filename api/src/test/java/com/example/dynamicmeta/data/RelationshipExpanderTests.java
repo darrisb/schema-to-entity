@@ -1,14 +1,24 @@
 package com.example.dynamicmeta.data;
 
+import java.sql.Connection;
+import java.sql.Statement;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
+import com.example.dynamicmeta.SchemaDiscoveryService;
 import com.example.dynamicmeta.graph.GraphRelationship;
 import com.example.dynamicmeta.graph.OverlayStore;
 import com.example.dynamicmeta.graph.SchemaGraph;
 import com.example.dynamicmeta.graph.SchemaGraphBuilder;
 import com.example.dynamicmeta.SchemaToEntityProperties;
+import com.example.dynamicmeta.SchemaToEntityProperties.SourceProperties;
+import com.example.dynamicmeta.connection.ConnectionPolicy;
+import com.example.dynamicmeta.connection.ConnectionStringParser;
+import com.example.dynamicmeta.connection.JdbcConnectionFactory;
+import org.h2.jdbcx.JdbcDataSource;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -75,6 +85,64 @@ class RelationshipExpanderTests {
                 false, List.of("customer_id")))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("expand requires graph-enabled=true");
+    }
+
+    @Test
+    void sameSourceExpansionWorksWithOneConnectionPool() throws Exception {
+        String url = "jdbc:h2:mem:ste_expand_single_connection;DB_CLOSE_DELAY=-1";
+        seed(url);
+        SourceProperties source = new SourceProperties();
+        source.setUrl(url);
+        source.setUsername("sa");
+        source.setPassword("");
+        source.setSchema("PUBLIC");
+        source.setMaxPoolSize(1);
+
+        SchemaToEntityProperties properties = new SchemaToEntityProperties();
+        properties.setSources(Map.of("orders", source));
+        properties.setGraphEnabled(true);
+        ConnectionStringParser parser = new ConnectionStringParser();
+        ConnectionPolicy policy = new ConnectionPolicy(List.of(), true);
+        JdbcConnectionFactory factory = new JdbcConnectionFactory(
+                Duration.ofSeconds(10), Duration.ofSeconds(60));
+        SourceRegistry registry = new SourceRegistry(
+                DataSourceDefinitions.from(properties, parser, policy),
+                factory, parser, Duration.ofMillis(250));
+        try {
+            SchemaCache cache = new SchemaCache(registry,
+                    new SchemaDiscoveryService(null, properties, policy, factory), properties);
+            RelationshipExpander expander = mock(RelationshipExpander.class);
+            when(expander.resolve("orders", "ORDERS", "CUSTOMER_ID"))
+                    .thenReturn(new RelationshipExpander.Expansion(
+                            "CUSTOMER_ID", "orders", "CUSTOMERS", "ID"));
+            DataQueryService service = new DataQueryService(registry, cache,
+                    new QueryParameterParser(properties), properties, () -> expander);
+
+            DataQueryService.DataPage page = service.query("orders", "orders", Map.of(), false,
+                    List.of("customer_id"));
+
+            assertThat(page.items()).singleElement().satisfies(row -> {
+                Map<?, ?> expanded = (Map<?, ?>) row.get("_expanded");
+                assertThat(expanded.get("customer_id"))
+                        .isEqualTo(Map.of("ID", 10L, "NAME", "Alice"));
+            });
+        } finally {
+            registry.destroy();
+        }
+    }
+
+    private static void seed(String url) throws Exception {
+        JdbcDataSource dataSource = new JdbcDataSource();
+        dataSource.setURL(url);
+        dataSource.setUser("sa");
+        try (Connection connection = dataSource.getConnection();
+             Statement statement = connection.createStatement()) {
+            statement.execute("create table customers (id bigint primary key, name varchar(40))");
+            statement.execute("create table orders (id bigint primary key, customer_id bigint, "
+                    + "foreign key (customer_id) references customers (id))");
+            statement.execute("insert into customers values (10, 'Alice')");
+            statement.execute("insert into orders values (1, 10)");
+        }
     }
 
     private RelationshipExpander expander(GraphRelationship relationship) {

@@ -153,16 +153,17 @@ public final class DataQueryService {
         SqlStatement select = builder.select(model, databaseQuery);
         SqlStatement count = includeTotal ? builder.buildCount(model, query) : null;
 
+        Long total;
+        List<Map<String, Object>> items;
         try (Connection connection = registry.get(source).getConnection()) {
-            Long total = count == null ? null : executeCount(connection, count, query.limit());
-            List<Map<String, Object>> items =
-                    executeRows(connection, select, query.limit());
-            if (!expansions.isEmpty()) {
-                items = expand(source, model, items, expansions);
-                items = removeInternalFields(items, query.fields(), model, expansions);
-            }
-            return new DataPage(items, total, query.limit(), query.offset());
+            total = count == null ? null : executeCount(connection, count, query.limit());
+            items = executeRows(connection, select, query.limit());
         }
+        if (!expansions.isEmpty()) {
+            items = expand(source, model, items, expansions);
+            items = removeInternalFields(items, query.fields(), model, expansions);
+        }
+        return new DataPage(items, total, query.limit(), query.offset());
     }
 
     private static QuerySpec withExpansionFields(QuerySpec query, EntityModel model,
