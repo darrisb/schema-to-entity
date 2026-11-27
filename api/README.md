@@ -135,6 +135,9 @@ schema-to-entity:
 | `schema-to-entity.data-allowed-origins` | `[]` | Browser origins allowed to call `/api/data/**`. Empty sends no CORS headers. |
 | `schema-to-entity.snapshot-dir` | `./snapshots` | Folder holding each source's accepted baseline snapshot. See "Drift detection" below. |
 | `schema-to-entity.drift-check-interval` | *(unset)* | How often every source is checked for drift in the background. Unset schedules nothing. Requires `graph-enabled`. See "Drift detection" below. |
+| `schema-to-entity.pages-enabled` | `false` | Registers the page storage API at `/api/pages/**`. See "Page storage" below. |
+| `schema-to-entity.pages-dir` | `./pages` | Folder holding current page documents and their short history. |
+| `schema-to-entity.page-allowed-origins` | `[]` | Browser origins allowed to call `/api/pages/**`. Empty sends no CORS headers. |
 
 Each source accepts:
 
@@ -436,6 +439,83 @@ curl -X DELETE 'http://localhost:8080/api/graph/overlay/labels?id=demo:users'
 Removes the label of the id. Returns `204`, or `404` when neither the document nor the overlay knows the id.
 
 **Security:** the graph endpoints are admin endpoints, like `/api/schema/**`: the document names every configured source and the overlay endpoints accept edits, so they receive no CORS headers — only `/api/data/**` does — and have no authentication of their own. `graph-enabled` is off by default for that reason; keep it off, or behind authentication and authorization, outside local development. Nothing here writes to any source database; the only file written is the overlay JSON. The drift endpoints below live under `/api/graph/drift` and carry exactly the same admin standing, gating and error shape.
+
+## Page storage
+
+A **page** is a visual-ui JSON document: a JSON array of components produced by the visual-ui examples or builder. The server stores the document, extracts the database entities and columns it refers to, and compares those dependencies with the current schema. It never renders the page and no page operation writes to a source database.
+
+Page storage is an opt-in admin API:
+
+```yaml
+schema-to-entity:
+  pages-enabled: true
+  pages-dir: ./pages
+  page-allowed-origins:
+    - http://localhost:5173
+```
+
+`pages-dir` contains `<id>.json` for each current page. Replacing a page archives the previous version under `history/<id>/`; the five newest versions are retained. Page ids must match `[a-z0-9-]{1,64}`, names are at most 120 characters, and a document is at most 512 KB. In Docker, use persistent storage: the bundled Compose configuration sets `PAGES_DIR=/data/pages` on the existing `overlay_data` volume.
+
+### Page endpoints
+
+#### `PUT /api/pages/{id}` — create or replace a page
+
+```bash
+curl -X PUT http://localhost:8080/api/pages/customer-admin \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Customer admin","description":"Customer list","document":[{"id":"users-table","type":"table","dataSource":{"type":"rest","url":"/api/data/demo/users","schemaVersion":"1a2b3c4d5e6f"},"properties":{"columns":"id|ID\nuser_name|Name"}}]}'
+```
+
+The request fields are `name`, `description` and `document`; `document` must be a JSON array. The response is the stored page with `id`, `name`, `description`, `document`, `createdAt` and `updatedAt`.
+
+#### `GET /api/pages` — list pages
+
+```bash
+curl http://localhost:8080/api/pages
+```
+
+Returns summaries in id order. Each has `id`, `name`, `description`, `updatedAt`, an `entities` set, and `status`.
+
+#### `GET /api/pages/{id}` — read a page
+
+```bash
+curl http://localhost:8080/api/pages/customer-admin
+```
+
+Returns the stored fields plus `dependencies`, whose `usages` identify the component, usage kind, entity id and optional column id, and whose `schemaVersions` map records versions embedded in REST data sources.
+
+#### `GET /api/pages/{id}/status` — check schema compatibility
+
+```bash
+curl http://localhost:8080/api/pages/customer-admin/status
+```
+
+Returns `pageId`, `state`, `missingEntities`, `missingColumns` and `staleSources`. Status meanings are:
+
+| `state` | Meaning |
+|---|---|
+| `ok` | Every referenced entity and column exists, and recorded schema versions match. |
+| `stale` | Dependencies still exist, but at least one recorded `schemaVersion` differs from the schema currently served. |
+| `broken` | At least one referenced entity or column is missing. |
+| `unavailable` | A referenced source could not be resolved or discovered, so compatibility could not be determined. |
+
+#### `DELETE /api/pages/{id}` — delete a page
+
+```bash
+curl -X DELETE http://localhost:8080/api/pages/customer-admin
+```
+
+Returns `204` when deleted and `404` for an unknown id. Existing archived versions are retained.
+
+### How dependencies are found
+
+The analyzer walks every component and nested `children`. For REST data sources whose URL path matches `/api/data/{source}/{entity}`, it records the entity and reads columns from `mapping` values, `query.fields`, `eq.<column>`, `contains.<column>` and `sort`. It also reads a table's pipe-delimited `properties.columns`, and the `filterField` of input/dropdown components whose `filterTarget` names a table. A data source's `schemaVersion` is recorded per source. Malformed or unrelated components are ignored rather than making the page unreadable.
+
+Drift reports use the same extracted dependencies. When drift removes or changes an entity or column, each matching `impact.pages` entry names the saved `pageId` and affected `componentIds`, allowing a reviewer to find pages that may need repair before accepting the new baseline. Drift analysis only reads page files.
+
+Browser access is controlled separately by `schema-to-entity.page-allowed-origins`. Empty (the default) sends no CORS headers; list exact origins or explicitly use `*`. The mapping applies only to `/api/pages/**`, permits `GET`, `PUT`, `DELETE` and `OPTIONS` without credentials, and does not change CORS for data, graph, drift or schema endpoints.
+
+**Security:** page endpoints have no authentication or authorization of their own and include write operations. Allowed origins are a browser CORS boundary, not authentication. Keep `pages-enabled` off outside local development unless the API is protected. Stored documents may describe UI structure and data dependencies, but page storage never renders them and never writes to a source database.
 
 ## Drift detection (snapshots, baselines and review)
 

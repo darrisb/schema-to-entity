@@ -57,6 +57,14 @@ schema-to-entity:
   # means nothing is checked on a timer and drift is only checked when a caller
   # asks (GET /api/graph/drift[?check=true]). See api/README.md, "Drift detection".
   drift-check-interval: 15m
+  # Stored visual-ui page documents. The starter leaves this admin API off by
+  # default. In Docker PAGES_DIR points at the persistent /data volume.
+  pages-enabled: true
+  pages-dir: ${PAGES_DIR:./pages}
+  # Browser origins allowed to use /api/pages/**. This is the visual-ui
+  # examples and builder development server.
+  page-allowed-origins:
+    - http://localhost:5173
   # Origins allowed to call the read-only data API from a browser. This covers
   # /api/data/** only. Add the deployed UI origin for production.
   data-allowed-origins:

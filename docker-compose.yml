@@ -47,8 +47,10 @@ services:
       # Drift baselines (one JSON snapshot per source, plus <dir>/history) on the
       # same /data volume, so an accepted baseline survives a rebuild too.
       SNAPSHOT_DIR: /data/snapshots
+      # Stored visual-ui page documents and their short history.
+      PAGES_DIR: /data/pages
     volumes:
-      # Mounted volume for /data/schema-overlay.json and /data/snapshots.
+      # Mounted volume for the overlay, snapshots and stored pages.
       - overlay_data:/data
     ports:
       - "8081:8080"

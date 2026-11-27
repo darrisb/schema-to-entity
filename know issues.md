@@ -238,6 +238,24 @@ Deliberately left as-is: a baseline file that exists but cannot be read is repor
 error naming the file and is never deleted or overwritten automatically, so a damaged or
 foreign baseline stops the check instead of being silently re-baselined.
 
+### 13. Security: page endpoints have no authentication
+
+**Impact:** `/api/pages/**` shares the admin API's missing authentication and
+authorization. When `schema-to-entity.pages-enabled=true`, any caller that can reach it
+can read stored visual-ui documents and their extracted dependencies, replace or delete
+pages, and query their schema compatibility. Page documents can reveal UI structure and
+the source, entity and column ids used by components.
+
+The endpoints accept browser writes (`PUT` and `DELETE`) from origins listed in
+`schema-to-entity.page-allowed-origins`. CORS only limits browser origins; it is not
+authentication and does not stop direct HTTP clients. The default origin list is empty,
+and page storage itself is disabled by default. Page operations only write files under
+`pages-dir`; they never render documents or write to a source database.
+
+**What remains:** Protect `/api/pages/**` with authentication and authorization before
+any non-local deployment, and allow only trusted builder origins. The bundled demo enables
+pages and allows `http://localhost:5173` for visual-ui examples and the builder dev server.
+
 ## Caveats on the above
 
 The repo has no Hibernate dependency. All Hibernate findings (issue 1, and the successful
