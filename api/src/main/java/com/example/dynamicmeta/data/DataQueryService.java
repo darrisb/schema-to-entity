@@ -289,9 +289,10 @@ public final class DataQueryService {
         EntityModel model = schema.entity(entity);
         AggregateSpec spec = aggregateParameterParser.parse(model, parameters);
         DatabaseType databaseType = databaseType(schema);
-        SqlStatement select = new AggregateBuilder(databaseType, schema.catalog(), schema.schema())
-                .aggregate(model, spec);
-        List<String> metrics = spec.metrics().stream().map(DataQueryService::metricAlias).toList();
+        AggregateBuilder builder = new AggregateBuilder(
+                databaseType, schema.catalog(), schema.schema());
+        SqlStatement select = builder.aggregate(model, spec);
+        List<String> metrics = builder.metricAliases(model, spec);
 
         try (Connection connection = registry.get(source).getConnection()) {
             List<Map<String, Object>> rows = executeRows(connection, select, spec.limit());
@@ -344,12 +345,6 @@ public final class DataQueryService {
                     "Unsupported database type: " + schema.databaseType());
         }
         return databaseType;
-    }
-
-    private static String metricAlias(AggregateSpec.Metric metric) {
-        String function = metric.function().name().toLowerCase(java.util.Locale.ROOT);
-        return metric.column() == null ? function
-                : function + "_" + metric.column().toLowerCase(java.util.Locale.ROOT);
     }
 
     private List<Map<String, Object>> executeRows(Connection connection,

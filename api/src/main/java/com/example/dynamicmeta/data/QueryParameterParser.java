@@ -34,6 +34,10 @@ import com.example.dynamicmeta.SchemaToEntityProperties;
  *   <li>{@code offset=n} is optional and must be between 0 and
  *       {@value #MAX_OFFSET}</li>
  *   <li>{@code eq.<column>=value} adds an exact-match filter</li>
+ *   <li>{@code neq.<column>=value} adds a not-equal filter and converts the
+ *       value in the same way as {@code eq.}</li>
+ *   <li>{@code isnull.<column>=true|false} adds an {@code IS NULL} or
+ *       {@code IS NOT NULL} filter</li>
  *   <li>{@code contains.<column>=text} adds a case-insensitive substring
  *       filter; only {@link ColumnCategory#TEXT} columns are accepted</li>
  *   <li>{@code gt.}, {@code gte.}, {@code lt.}, and {@code lte.} add range
@@ -60,7 +64,7 @@ import com.example.dynamicmeta.SchemaToEntityProperties;
  */
 public final class QueryParameterParser {
 
-    /** Maximum number of equality, contains, and range filter parameters. */
+    /** Maximum number of filter parameters across all filter kinds. */
     public static final int MAX_FILTERS = 10;
     /** Maximum number of sort columns in one request. */
     public static final int MAX_SORT_COLUMNS = 3;

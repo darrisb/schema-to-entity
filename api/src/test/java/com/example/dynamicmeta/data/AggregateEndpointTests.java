@@ -124,6 +124,34 @@ class AggregateEndpointTests {
                 .andExpect(jsonPath("$.error").exists());
     }
 
+    @Test
+    void hiddenMetricColumnReturns400() throws Exception {
+        mockMvc.perform(get("/api/data/orders/sales/aggregate")
+                        .param("metric", "max:secret"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").exists());
+    }
+
+    @Test
+    void hiddenFilterColumnReturns400() throws Exception {
+        mockMvc.perform(get("/api/data/orders/sales/aggregate")
+                        .param("metric", "count")
+                        .param("eq.secret", "a"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").exists());
+    }
+
+    @Test
+    void metricAliasesEqualRowKeysWhenRequestUsesDifferentColumnCasing() throws Exception {
+        mockMvc.perform(get("/api/data/orders/sales/aggregate")
+                        .param("metric", "SuM:ToTaL"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.metrics[0]").value("sum_total"))
+                .andExpect(jsonPath("$.metrics.length()").value(1))
+                .andExpect(jsonPath("$.rows[0].length()").value(1))
+                .andExpect(jsonPath("$.rows[0].sum_total").value(135.0));
+    }
+
     private static void seed() throws Exception {
         JdbcDataSource dataSource = new JdbcDataSource();
         dataSource.setURL(URL);

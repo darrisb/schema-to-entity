@@ -60,6 +60,22 @@ public final class AggregateBuilder {
         return new SqlStatement(statement.toString(), parameters);
     }
 
+    /**
+     * Returns the metric aliases produced by {@link #aggregate(EntityModel, AggregateSpec)},
+     * resolved against the entity's discovered column spelling.
+     */
+    public List<String> metricAliases(EntityModel entity, AggregateSpec spec) {
+        Objects.requireNonNull(entity, "entity");
+        Objects.requireNonNull(spec, "spec");
+
+        List<String> groups = spec.groupBy().stream()
+                .map(column -> sql.resolveColumn(entity, column)).toList();
+        List<ResolvedMetric> metrics = spec.metrics().stream()
+                .map(metric -> resolveMetric(entity, metric)).toList();
+        ensureUniqueOutputNames(groups, metrics);
+        return metrics.stream().map(ResolvedMetric::alias).toList();
+    }
+
     private ResolvedMetric resolveMetric(EntityModel entity, AggregateSpec.Metric metric) {
         if (metric.function() == AggregateSpec.Function.COUNT && metric.column() == null) {
             return new ResolvedMetric(metric.function(), null, "count");
