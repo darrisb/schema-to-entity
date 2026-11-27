@@ -256,6 +256,37 @@ and page storage itself is disabled by default. Page operations only write files
 any non-local deployment, and allow only trusted builder origins. The bundled demo enables
 pages and allows `http://localhost:5173` for visual-ui examples and the builder dev server.
 
+### 14. Security: LLM and MCP endpoints have no authentication
+
+**Impact:** `/api/llm/schema` and the demo's streamable HTTP MCP endpoint at `/mcp` have
+no authentication or authorization of their own. Anyone who can reach them can inspect
+the visible schema and use the MCP tools to issue bounded read-only queries against every
+configured source. In addition, requesting `/api/llm/schema?values=true` (or calling
+`schema_summary` with `includeValues=true`) can reveal real distinct text values, not just
+metadata; those values may contain customer or other sensitive data.
+
+**Mitigations in place:** Both features depend on `schema-to-entity.llm-enabled`, which
+defaults to `false` in the starter. Queries contain only cached-schema `SELECT` statements,
+use bound parameters, respect hidden columns, row caps and query timeouts, and cannot
+write to a source. The bundled demo deliberately enables LLM and MCP access for local use.
+
+**What remains:** Put authentication and per-source authorization in front of both paths
+before non-local deployment. Keep `values=false` unless the authenticated caller is
+allowed to see sampled data values; network isolation alone does not make those values
+non-sensitive.
+
+### 15. Spring Boot 3.5 is past open-source support
+
+**Impact:** Spring Boot 3.5 reached the end of its open-source support period in June
+2026. This starter and demo currently use Spring Boot 3.5, so community maintenance and
+security fixes are no longer expected on that line. Spring AI 2.x requires Spring Boot 4,
+so upgrading Spring AI is also a Boot major-version migration rather than a standalone
+dependency bump.
+
+**Status:** Open. Plan and test a Spring Boot 4 migration before moving to Spring AI 2.x;
+until then, use an appropriately supported commercial Spring Boot 3.5 distribution or
+accept and manage the lifecycle risk explicitly.
+
 ## Caveats on the above
 
 The repo has no Hibernate dependency. All Hibernate findings (issue 1, and the successful

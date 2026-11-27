@@ -144,6 +144,92 @@ class QueryParameterParserTests {
     }
 
     @Test
+    void notEqualsAndNullChecksParse() {
+        QuerySpec spec = parser().parse(PRODUCTS, Map.of(
+                "neq.price", List.of("19.99"),
+                "isnull.notes", List.of("true"),
+                "isnull.created_at", List.of("false")));
+
+        assertThat(spec.notEquals()).containsEntry("PRICE", new BigDecimal("19.99"));
+        assertThat(spec.nullChecks())
+                .containsEntry("NOTES", true)
+                .containsEntry("CREATED_AT", false);
+    }
+
+    @Test
+    void invalidNullCheckIsRejected() {
+        assertThatThrownBy(() -> parser().parse(PRODUCTS, params("isnull.notes", "maybe")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("NOTES");
+    }
+
+    @Test
+    void notEqualsAndNullChecksCountTowardFilterLimit() {
+        Map<String, List<String>> filters = new LinkedHashMap<>();
+        for (int i = 0; i < 5; i++) {
+            filters.put("neq.id" + i, List.of("1"));
+            filters.put("isnull.id" + (i + 5), List.of("true"));
+        }
+        List<ColumnModel> columns = new ArrayList<>();
+        for (int i = 0; i < 11; i++) {
+            columns.add(new ColumnModel("ID" + i, "bigint", ColumnCategory.NUMBER, true));
+        }
+        EntityModel entity = new EntityModel("NUMBERS", "table", columns, List.of());
+
+        assertThat(parser().parse(entity, filters).notEquals()).hasSize(5);
+        filters.put("isnull.id10", List.of("false"));
+        assertThatThrownBy(() -> parser().parse(entity, filters))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("filters");
+    }
+
+    @Test
+    void everyRangeOperatorParsesWithCategoryConversion() {
+        QuerySpec spec = parser().parse(PRODUCTS, Map.of(
+                "gt.price", List.of("100.50"),
+                "gte.released_on", List.of("2026-10-01"),
+                "lt.created_at", List.of("2026-11-01T00:00:00Z"),
+                "lte.id", List.of("500")));
+
+        assertThat(spec.ranges()).containsExactlyInAnyOrder(
+                new QuerySpec.RangeFilter("PRICE", QuerySpec.RangeOperator.GT,
+                        new BigDecimal("100.50")),
+                new QuerySpec.RangeFilter("RELEASED_ON", QuerySpec.RangeOperator.GTE,
+                        LocalDate.of(2026, 10, 1)),
+                new QuerySpec.RangeFilter("CREATED_AT", QuerySpec.RangeOperator.LT,
+                        Instant.parse("2026-11-01T00:00:00Z")),
+                new QuerySpec.RangeFilter("ID", QuerySpec.RangeOperator.LTE,
+                        new BigDecimal("500")));
+    }
+
+    @Test
+    void rangeFilterOnTextColumnIsRejectedAndNamesColumn() {
+        assertThatThrownBy(() -> parser().parse(PRODUCTS, params("gt.name", "A")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("NAME");
+    }
+
+    @Test
+    void rangeFiltersCountTowardTenFilterLimit() {
+        Map<String, List<String>> filters = new LinkedHashMap<>();
+        for (int i = 0; i < 9; i++) {
+            filters.put("gt.id" + i, List.of("1"));
+        }
+        List<ColumnModel> columns = new ArrayList<>();
+        for (int i = 0; i < 10; i++) {
+            columns.add(new ColumnModel("ID" + i, "bigint", ColumnCategory.NUMBER, false));
+        }
+        EntityModel entity = new EntityModel("NUMBERS", "table", columns, List.of());
+        filters.put("eq.id9", List.of("1"));
+        assertThat(parser().parse(entity, filters).ranges()).hasSize(9);
+
+        filters.put("lt.id9", List.of("2"));
+        assertThatThrownBy(() -> parser().parse(entity, filters))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("filters");
+    }
+
+    @Test
     void columnNamesMatchCaseInsensitivelyAndResolveToModelSpelling() {
         QuerySpec spec = parser().parse(PRODUCTS, Map.of(
                 "fields", List.of("id"),

@@ -83,8 +83,18 @@ public class DataController {
             @RequestParam(name = "total", defaultValue = "true") boolean total)
             throws SQLException {
         DataQueryService.DataPage page =
-                queryService.query(source, entity, withoutTotal(parameters), total);
+                queryService.query(source, entity, withoutControlParameters(parameters), total,
+                        parameters.getOrDefault("expand", List.of()));
         return versioned(source, page);
+    }
+
+    /** Returns grouped aggregate rows for an entity. */
+    @GetMapping("/{source}/{entity}/aggregate")
+    public ResponseEntity<DataQueryService.AggregateResult> aggregate(
+            @PathVariable String source,
+            @PathVariable String entity,
+            @RequestParam MultiValueMap<String, String> parameters) throws SQLException {
+        return versioned(source, queryService.aggregate(source, entity, parameters));
     }
 
     /** Returns one row by its single-column key. */
@@ -104,11 +114,11 @@ public class DataController {
     }
 
     /** The {@code total} switch is handled here, not by the query parser. */
-    private static Map<String, List<String>> withoutTotal(
+    private static Map<String, List<String>> withoutControlParameters(
             MultiValueMap<String, String> parameters) {
         Map<String, List<String>> queryParameters = new LinkedHashMap<>();
         parameters.forEach((name, values) -> {
-            if (!"total".equals(name)) {
+            if (!"total".equals(name) && !"expand".equals(name)) {
                 queryParameters.put(name, values);
             }
         });

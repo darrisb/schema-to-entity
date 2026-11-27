@@ -113,6 +113,42 @@ public final class SelectBuilder {
         return new SqlStatement(sql.toString(), parameters);
     }
 
+    /** Builds an internal, schema-validated SELECT using bound IN values. */
+    public SqlStatement selectIn(EntityModel entity, String column, List<?> values) {
+        Objects.requireNonNull(entity, "entity");
+        Objects.requireNonNull(values, "values");
+        if (values.isEmpty()) {
+            throw new IllegalArgumentException("IN values must not be empty");
+        }
+        String resolved = resolveColumn(entity, column);
+        String placeholders = values.stream().map(value -> "?")
+                .collect(Collectors.joining(", "));
+        String sql = "SELECT " + entity.columns().stream()
+                .map(ColumnModel::name).map(this::quote).collect(Collectors.joining(", "))
+                + " FROM " + qualifiedTable(entity)
+                + " WHERE " + quote(resolved) + " IN (" + placeholders + ")";
+        return new SqlStatement(sql, new ArrayList<>(values));
+    }
+
+    /**
+     * Builds the bounded distinct-value lookup used by schema summaries. Both
+     * identifiers are resolved from the cached schema and the limit is bound,
+     * so this remains an internal, read-only SELECT.
+     */
+    public SqlStatement selectDistinct(EntityModel entity, String column, int limit) {
+        Objects.requireNonNull(entity, "entity");
+        if (limit < 1) {
+            throw new IllegalArgumentException("limit must be positive");
+        }
+        String resolved = resolveColumn(entity, column);
+        StringBuilder sql = new StringBuilder("SELECT DISTINCT ")
+                .append(quote(resolved)).append(" FROM ").append(qualifiedTable(entity))
+                .append(" ORDER BY ").append(quote(resolved));
+        List<Object> parameters = new ArrayList<>();
+        appendPaging(sql, limit, null, parameters);
+        return new SqlStatement(sql.toString(), parameters);
+    }
+
     private String selectList(EntityModel entity, QuerySpec query) {
         List<String> columns = query.fields().isEmpty()
                 ? entity.columns().stream().map(ColumnModel::name).toList()
@@ -125,15 +161,36 @@ public final class SelectBuilder {
 
     private void appendWhere(StringBuilder sql, EntityModel entity, QuerySpec query,
                              List<Object> parameters) {
+        appendWhere(sql, entity, query.equals(), query.notEquals(), query.contains(),
+                query.nullChecks(), query.ranges(), parameters);
+    }
+
+    void appendWhere(StringBuilder sql, EntityModel entity,
+                     Map<String, Object> equals, Map<String, Object> notEquals,
+                     Map<String, String> contains, Map<String, Boolean> nullChecks,
+                     List<QuerySpec.RangeFilter> ranges, List<Object> parameters) {
         List<String> clauses = new ArrayList<>();
-        for (Map.Entry<String, Object> entry : query.equals().entrySet()) {
+        for (Map.Entry<String, Object> entry : equals.entrySet()) {
             clauses.add(quote(resolveColumn(entity, entry.getKey())) + " = ?");
             parameters.add(entry.getValue());
         }
-        for (Map.Entry<String, String> entry : query.contains().entrySet()) {
+        for (Map.Entry<String, Object> entry : notEquals.entrySet()) {
+            clauses.add(quote(resolveColumn(entity, entry.getKey())) + " <> ?");
+            parameters.add(entry.getValue());
+        }
+        for (Map.Entry<String, String> entry : contains.entrySet()) {
             clauses.add("LOWER(" + quote(resolveColumn(entity, entry.getKey())) + ")"
                     + " LIKE LOWER(?) ESCAPE '" + LIKE_ESCAPE + "'");
             parameters.add("%" + escapeLike(entry.getValue()) + "%");
+        }
+        for (QuerySpec.RangeFilter range : ranges) {
+            clauses.add(quote(resolveColumn(entity, range.column())) + " "
+                    + range.operator().sql() + " ?");
+            parameters.add(range.value());
+        }
+        for (Map.Entry<String, Boolean> entry : nullChecks.entrySet()) {
+            clauses.add(quote(resolveColumn(entity, entry.getKey()))
+                    + (entry.getValue() ? " IS NULL" : " IS NOT NULL"));
         }
         if (!clauses.isEmpty()) {
             sql.append(" WHERE ").append(String.join(" AND ", clauses));
@@ -164,8 +221,11 @@ public final class SelectBuilder {
     }
 
     private void appendPaging(StringBuilder sql, QuerySpec query, List<Object> parameters) {
-        Integer limit = query.limit();
-        Integer offset = query.offset();
+        appendPaging(sql, query.limit(), query.offset(), parameters);
+    }
+
+    void appendPaging(StringBuilder sql, Integer limit, Integer offset,
+                      List<Object> parameters) {
         if (limit == null && offset == null) {
             return;
         }
@@ -197,7 +257,7 @@ public final class SelectBuilder {
         }
     }
 
-    private String qualifiedTable(EntityModel entity) {
+    String qualifiedTable(EntityModel entity) {
         List<String> parts = new ArrayList<>(3);
         if (includesCatalog() && isNotBlank(catalog)) {
             parts.add(quote(catalog));
@@ -220,7 +280,7 @@ public final class SelectBuilder {
         return databaseType == DatabaseType.MYSQL || databaseType == DatabaseType.MARIADB;
     }
 
-    private String quote(String identifier) {
+    String quote(String identifier) {
         Objects.requireNonNull(identifier, "identifier");
         return switch (databaseType) {
             case MYSQL, MARIADB -> "`" + identifier.replace("`", "``") + "`";
@@ -233,7 +293,7 @@ public final class SelectBuilder {
      * Resolves a caller-supplied column name to the discovered column name,
      * ignoring case so quoted identifiers keep the database's own spelling.
      */
-    private String resolveColumn(EntityModel entity, String requested) {
+    String resolveColumn(EntityModel entity, String requested) {
         if (requested != null) {
             for (ColumnModel column : entity.columns()) {
                 if (column.name().equalsIgnoreCase(requested)) {

@@ -12,6 +12,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 import com.example.dynamicmeta.SchemaDiscoveryService;
 import com.example.dynamicmeta.SchemaToEntityProperties;
@@ -47,6 +48,7 @@ public class SchemaCache {
     private final Clock clock;
     private final Map<String, CachedSchema> cache = new ConcurrentHashMap<>();
     private final Map<String, Object> locks = new ConcurrentHashMap<>();
+    private final AtomicLong generations = new AtomicLong();
 
     public SchemaCache(SourceRegistry registry,
                        SchemaDiscoveryService discoveryService,
@@ -78,6 +80,12 @@ public class SchemaCache {
      */
     public SourceSchema get(String source) {
         return cached(source).schema();
+    }
+
+    /** Returns one atomic view of a discovery and its unique cache generation. */
+    public SchemaSnapshot snapshot(String source) {
+        CachedSchema cached = cached(source);
+        return new SchemaSnapshot(cached.schema(), cached.schemaVersion(), cached.generation());
     }
 
     /**
@@ -135,7 +143,7 @@ public class SchemaCache {
         SourceSchema schema = discover(source);
         Instant discoveredAt = clock.instant();
         CachedSchema cached = new CachedSchema(schema, discoveredAt,
-                SchemaVersion.of(source, schema, discoveredAt));
+                SchemaVersion.of(source, schema, discoveredAt), generations.incrementAndGet());
         cache.put(source, cached);
         return cached;
     }
@@ -363,6 +371,10 @@ public class SchemaCache {
      * version of that structure (DR-008), computed once here so requests only
      * read it back.
      */
-    private record CachedSchema(SourceSchema schema, Instant discoveredAt, String schemaVersion) {
+    public record SchemaSnapshot(SourceSchema schema, String schemaVersion, long generation) {
+    }
+
+    private record CachedSchema(SourceSchema schema, Instant discoveredAt, String schemaVersion,
+                                long generation) {
     }
 }

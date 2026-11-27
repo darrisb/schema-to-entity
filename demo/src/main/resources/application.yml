@@ -1,6 +1,14 @@
 spring:
   application:
     name: schema-to-entity-demo
+  ai:
+    mcp:
+      server:
+        name: schema-to-entity
+        enabled: ${schema-to-entity.llm-enabled:${SCHEMA_TO_ENTITY_LLM_ENABLED:true}}
+        protocol: STREAMABLE
+        streamable-http:
+          mcp-endpoint: /mcp
   datasource:
     # Overridden in Docker by SPRING_DATASOURCE_* environment variables.
     url: jdbc:postgresql://localhost:5433/dynamic_meta_db
@@ -41,6 +49,8 @@ schema-to-entity:
   # cross-source proposals between the two sources below and the overlay
   # endpoints. See api/README.md ("Combined schema document").
   graph-enabled: true
+  # The MCP server and the starter's LLM services share this switch.
+  llm-enabled: ${SCHEMA_TO_ENTITY_LLM_ENABLED:true}
   # JSON file keeping the graph's overlay edits — labels, relationship
   # decisions, manual relationships. The only file the starter writes
   # itself; rediscovery never wipes it. A local file, so it is not shared

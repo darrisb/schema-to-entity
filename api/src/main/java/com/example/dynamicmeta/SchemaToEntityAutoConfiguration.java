@@ -20,6 +20,7 @@ import com.example.dynamicmeta.connection.JdbcConnectionFactory;
 import com.example.dynamicmeta.data.DataController;
 import com.example.dynamicmeta.data.DataCorsConfiguration;
 import com.example.dynamicmeta.data.DataQueryService;
+import com.example.dynamicmeta.data.RelationshipExpander;
 import com.example.dynamicmeta.data.DataSourceDefinitions;
 import com.example.dynamicmeta.data.QueryParameterParser;
 import com.example.dynamicmeta.data.SchemaCache;
@@ -38,6 +39,9 @@ import com.example.dynamicmeta.pages.PageCorsConfiguration;
 import com.example.dynamicmeta.pages.PageDependencyExtractor;
 import com.example.dynamicmeta.pages.PageStore;
 import com.example.dynamicmeta.pages.PageStatusService;
+import com.example.dynamicmeta.llm.LlmController;
+import com.example.dynamicmeta.llm.LlmTools;
+import com.example.dynamicmeta.llm.SchemaSummary;
 
 import javax.sql.DataSource;
 
@@ -116,9 +120,11 @@ public class SchemaToEntityAutoConfiguration {
             SourceRegistry sourceRegistry,
             SchemaCache schemaCache,
             QueryParameterParser queryParameterParser,
-            SchemaToEntityProperties properties) {
+            SchemaToEntityProperties properties,
+            ObjectProvider<RelationshipExpander> relationshipExpander) {
         return new DataQueryService(
-                sourceRegistry, schemaCache, queryParameterParser, properties);
+                sourceRegistry, schemaCache, queryParameterParser, properties,
+                relationshipExpander::getIfAvailable);
     }
 
     @Bean
@@ -235,9 +241,45 @@ public class SchemaToEntityAutoConfiguration {
 
             @Bean
             @ConditionalOnMissingBean
+            RelationshipExpander relationshipExpander(SchemaGraphBuilder schemaGraphBuilder,
+                    OverlayStore overlayStore) {
+                return new RelationshipExpander(schemaGraphBuilder, overlayStore);
+            }
+
+            @Bean
+            @ConditionalOnMissingBean
             GraphController graphController(SchemaGraphBuilder schemaGraphBuilder,
                     OverlayStore overlayStore) {
                 return new GraphController(schemaGraphBuilder, overlayStore);
+            }
+
+            @Bean
+            @ConditionalOnMissingBean
+            @ConditionalOnProperty(prefix = "schema-to-entity", name = "llm-enabled",
+                    havingValue = "true")
+            SchemaSummary schemaSummary(SchemaGraphBuilder schemaGraphBuilder,
+                    OverlayStore overlayStore, SchemaCache schemaCache,
+                    SourceRegistry sourceRegistry, SchemaToEntityProperties properties) {
+                return new SchemaSummary(schemaGraphBuilder, overlayStore, schemaCache,
+                        sourceRegistry, properties);
+            }
+
+            @Bean
+            @ConditionalOnMissingBean
+            @ConditionalOnProperty(prefix = "schema-to-entity", name = "llm-enabled",
+                    havingValue = "true")
+            LlmTools llmTools(SchemaGraphBuilder schemaGraphBuilder, OverlayStore overlayStore,
+                    DataQueryService dataQueryService, SchemaSummary schemaSummary) {
+                return new LlmTools(schemaGraphBuilder, overlayStore, dataQueryService,
+                        schemaSummary);
+            }
+
+            @Bean
+            @ConditionalOnMissingBean
+            @ConditionalOnProperty(prefix = "schema-to-entity", name = "llm-enabled",
+                    havingValue = "true")
+            LlmController llmController(SchemaSummary schemaSummary) {
+                return new LlmController(schemaSummary);
             }
 
             /**
