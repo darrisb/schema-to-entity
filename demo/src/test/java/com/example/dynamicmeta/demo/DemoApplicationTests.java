@@ -87,4 +87,16 @@ class DemoApplicationTests {
         assertThat(yaml).contains("drift-check-interval: 15m");
         assertThat(yaml).contains("snapshot-dir: ${SNAPSHOT_DIR:");
     }
+
+    @Test
+    void pageStorageIsEnabledForTheVisualUiDevServerAndComposeVolume() throws IOException {
+        String yaml = Files.readString(Path.of("src/main/resources/application.yml"));
+        String compose = Files.readString(Path.of("../docker-compose.yml"));
+
+        assertThat(yaml).contains("pages-enabled: true");
+        assertThat(yaml).contains("pages-dir: ${PAGES_DIR:");
+        assertThat(yaml).contains("page-allowed-origins:");
+        assertThat(yaml).contains("- http://localhost:5173");
+        assertThat(compose).contains("PAGES_DIR: /data/pages");
+    }
 }

@@ -482,7 +482,9 @@ Returns summaries in id order. Each has `id`, `name`, `description`, `updatedAt`
 curl http://localhost:8080/api/pages/customer-admin
 ```
 
-Returns the stored fields plus `dependencies`, whose `usages` identify the component, usage kind, entity id and optional column id, and whose `schemaVersions` map records versions embedded in REST data sources.
+Returns the stored fields plus `dependencies`, whose `usages` entries contain
+`componentId`, `kind`, `entityId` and the optional `columnId`, and whose
+`schemaVersions` map records versions embedded in REST data sources.
 
 #### `GET /api/pages/{id}/status` — check schema compatibility
 
