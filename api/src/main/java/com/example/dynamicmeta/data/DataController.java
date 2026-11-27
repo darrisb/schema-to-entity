@@ -87,6 +87,15 @@ public class DataController {
         return versioned(source, page);
     }
 
+    /** Returns grouped aggregate rows for an entity. */
+    @GetMapping("/{source}/{entity}/aggregate")
+    public ResponseEntity<DataQueryService.AggregateResult> aggregate(
+            @PathVariable String source,
+            @PathVariable String entity,
+            @RequestParam MultiValueMap<String, String> parameters) throws SQLException {
+        return versioned(source, queryService.aggregate(source, entity, parameters));
+    }
+
     /** Returns one row by its single-column key. */
     @GetMapping("/{source}/{entity}/{key}")
     public ResponseEntity<Map<String, Object>> byKey(

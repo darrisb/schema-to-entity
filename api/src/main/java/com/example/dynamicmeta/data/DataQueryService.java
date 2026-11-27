@@ -47,6 +47,7 @@ public final class DataQueryService {
     private final SourceRegistry registry;
     private final SchemaCache schemaCache;
     private final QueryParameterParser queryParameterParser;
+    private final AggregateParameterParser aggregateParameterParser;
     private final Duration queryTimeout;
 
     public DataQueryService(SourceRegistry registry,
@@ -57,6 +58,7 @@ public final class DataQueryService {
         this.schemaCache = Objects.requireNonNull(schemaCache, "schemaCache");
         this.queryParameterParser = Objects.requireNonNull(queryParameterParser,
                 "queryParameterParser");
+        this.aggregateParameterParser = new AggregateParameterParser(queryParameterParser);
         Objects.requireNonNull(properties, "properties");
         Duration configured = properties.getQueryTimeout();
         this.queryTimeout = configured == null ? Duration.ZERO : configured;
@@ -130,6 +132,23 @@ public final class DataQueryService {
         }
     }
 
+    /** Runs one validated, read-only grouped aggregate query. */
+    public AggregateResult aggregate(String source, String entity,
+                                     Map<String, List<String>> parameters) throws SQLException {
+        SourceSchema schema = schemaCache.get(source);
+        EntityModel model = schema.entity(entity);
+        AggregateSpec spec = aggregateParameterParser.parse(model, parameters);
+        DatabaseType databaseType = databaseType(schema);
+        SqlStatement select = new AggregateBuilder(databaseType, schema.catalog(), schema.schema())
+                .aggregate(model, spec);
+        List<String> metrics = spec.metrics().stream().map(DataQueryService::metricAlias).toList();
+
+        try (Connection connection = registry.get(source).getConnection()) {
+            List<Map<String, Object>> rows = executeRows(connection, select, spec.limit());
+            return new AggregateResult(spec.groupBy(), metrics, rows);
+        }
+    }
+
     /**
      * Returns one row selected by the entity's single key column.
      *
@@ -165,12 +184,22 @@ public final class DataQueryService {
     }
 
     private SelectBuilder builder(SourceSchema schema) {
+        return new SelectBuilder(databaseType(schema), schema.catalog(), schema.schema());
+    }
+
+    private static DatabaseType databaseType(SourceSchema schema) {
         DatabaseType databaseType = DatabaseType.fromId(schema.databaseType());
         if (databaseType == null) {
             throw new IllegalArgumentException(
                     "Unsupported database type: " + schema.databaseType());
         }
-        return new SelectBuilder(databaseType, schema.catalog(), schema.schema());
+        return databaseType;
+    }
+
+    private static String metricAlias(AggregateSpec.Metric metric) {
+        String function = metric.function().name().toLowerCase(java.util.Locale.ROOT);
+        return metric.column() == null ? function
+                : function + "_" + metric.column().toLowerCase(java.util.Locale.ROOT);
     }
 
     private List<Map<String, Object>> executeRows(Connection connection,
@@ -425,6 +454,16 @@ public final class DataQueryService {
 
         public DataPage {
             items = List.copyOf(items);
+        }
+    }
+
+    /** Aggregate column metadata and result rows. */
+    public record AggregateResult(List<String> groups, List<String> metrics,
+                                  List<Map<String, Object>> rows) {
+        public AggregateResult {
+            groups = List.copyOf(groups);
+            metrics = List.copyOf(metrics);
+            rows = List.copyOf(rows);
         }
     }
 }
