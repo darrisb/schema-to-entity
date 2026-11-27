@@ -88,6 +88,27 @@ class AggregateEndpointTests {
     }
 
     @Test
+    void sumOnlyWithoutSortReturns200() throws Exception {
+        mockMvc.perform(get("/api/data/orders/sales/aggregate")
+                        .param("group", "status")
+                        .param("metric", "sum:total"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.metrics[0]").value("sum_total"))
+                .andExpect(jsonPath("$.rows[0].sum_total").value(129.5))
+                .andExpect(jsonPath("$.rows[1].sum_total").value(5.5));
+    }
+
+    @Test
+    void countColumnWithoutSortReturns200() throws Exception {
+        mockMvc.perform(get("/api/data/orders/sales/aggregate")
+                        .param("group", "status")
+                        .param("metric", "count:region"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.metrics[0]").value("count_region"))
+                .andExpect(jsonPath("$.rows[0].count_region").value(3));
+    }
+
+    @Test
     void badMetricSyntaxReturns400Error() throws Exception {
         mockMvc.perform(get("/api/data/orders/sales/aggregate")
                         .param("group", "status").param("metric", "sum"))

@@ -727,7 +727,7 @@ For “What were total sales by status last month?”, the assistant calculates 
 }
 ```
 
-The equivalent HTTP endpoint is `GET /api/data/{source}/{entity}/aggregate`, using `group=status`, `metric=sum:total`, `gte.created_at=...`, `lt.created_at=...`, `sort=-sum_total` and `limit=100`. Aggregate metrics are `count`, `count:column`, `sum:column`, `avg:column`, `min:column` and `max:column`; the implementation checks that each function is valid for the cached column type.
+The equivalent HTTP endpoint is `GET /api/data/{source}/{entity}/aggregate`, using `group=status`, `metric=sum:total`, `gte.created_at=...`, `lt.created_at=...`, `sort=-sum_total` and `limit=100`. Aggregate metrics are `count`, `count:column`, `sum:column`, `avg:column`, `min:column` and `max:column`; the implementation checks that each function is valid for the cached column type. `count` produces the alias `count`, while `count:column` produces `count_<column>` (for example, `count:status` produces `count_status`).
 
 Normal and aggregate queries accept `eq.<column>`, `neq.<column>`, `contains.<column>`, `isnull.<column>`, `gt.<column>`, `gte.<column>`, `lt.<column>` and `lte.<column>` filters. `isnull` takes `true` or `false`; range filters are limited to number, date and timestamp columns. Normal row queries also support `fields`, `sort`, `limit`, `offset`, `total` and `expand`. See “Query parameters” above for the paging limits.
 

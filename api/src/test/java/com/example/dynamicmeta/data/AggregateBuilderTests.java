@@ -64,6 +64,49 @@ class AggregateBuilderTests {
     }
 
     @Test
+    void sumOnlyWithoutSortOrdersByFirstMetricDescending() {
+        AggregateSpec spec = spec(List.of("status"),
+                List.of(new AggregateSpec.Metric(AggregateSpec.Function.SUM, "total")),
+                List.of(), null, null);
+
+        assertThat(new AggregateBuilder(DatabaseType.POSTGRESQL, "public")
+                .aggregate(ORDERS, spec).sql()).isEqualTo(
+                "SELECT \"STATUS\", SUM(\"TOTAL\") AS \"sum_total\""
+                        + " FROM \"public\".\"ORDERS\" GROUP BY \"STATUS\""
+                        + " ORDER BY \"sum_total\" DESC");
+    }
+
+    @Test
+    void countColumnWithoutSortOrdersByItsAliasDescending() {
+        AggregateSpec spec = spec(List.of("status"),
+                List.of(new AggregateSpec.Metric(AggregateSpec.Function.COUNT, "region")),
+                List.of(), null, null);
+
+        assertThat(new AggregateBuilder(DatabaseType.POSTGRESQL, "public")
+                .aggregate(ORDERS, spec).sql()).isEqualTo(
+                "SELECT \"STATUS\", COUNT(\"REGION\") AS \"count_region\""
+                        + " FROM \"public\".\"ORDERS\" GROUP BY \"STATUS\""
+                        + " ORDER BY \"count_region\" DESC");
+    }
+
+    @Test
+    void rejectsMetricAliasMatchingGroupColumnIgnoringCase() {
+        EntityModel entity = new EntityModel("TOTALS", "table", List.of(
+                new ColumnModel("SUM_TOTAL", "varchar(20)", ColumnCategory.TEXT, false),
+                new ColumnModel("TOTAL", "numeric(12,2)", ColumnCategory.NUMBER, false)),
+                List.of());
+        AggregateSpec spec = spec(List.of("SUM_TOTAL"),
+                List.of(new AggregateSpec.Metric(AggregateSpec.Function.SUM, "TOTAL")),
+                List.of(), null, null);
+
+        assertThatThrownBy(() -> new AggregateBuilder(DatabaseType.POSTGRESQL)
+                .aggregate(entity, spec))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("sum_total")
+                .hasMessageContaining("SUM_TOTAL");
+    }
+
+    @Test
     void rejectsSumOnTextAndFourthGroupColumn() {
         assertThatThrownBy(() -> new AggregateBuilder(DatabaseType.POSTGRESQL)
                 .aggregate(ORDERS, spec(List.of("status"),

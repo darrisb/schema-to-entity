@@ -9,7 +9,12 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 
-/** Pure builder for safe, read-only grouped aggregate SELECT statements. */
+/**
+ * Pure builder for safe, read-only grouped aggregate SELECT statements.
+ * Metric aliases are {@code count} for {@code COUNT(*)} and
+ * {@code <function>_<column>} for column metrics, including
+ * {@code count_<column>} for {@code COUNT(column)}.
+ */
 public final class AggregateBuilder {
 
     private final SelectBuilder sql;
@@ -34,7 +39,7 @@ public final class AggregateBuilder {
                 .map(column -> sql.resolveColumn(entity, column)).toList();
         List<ResolvedMetric> metrics = spec.metrics().stream()
                 .map(metric -> resolveMetric(entity, metric)).toList();
-        ensureUniqueAliases(metrics);
+        ensureUniqueOutputNames(groups, metrics);
 
         List<String> selections = new ArrayList<>();
         groups.stream().map(sql::quote).forEach(selections::add);
@@ -85,24 +90,48 @@ public final class AggregateBuilder {
 
     private void appendOrderBy(StringBuilder statement, List<String> groups,
                                List<ResolvedMetric> metrics, AggregateSpec.Sort requested) {
-        String name = requested == null ? "count" : requested.column();
-        QuerySpec.Direction direction = requested == null
-                ? QuerySpec.Direction.DESC : requested.effectiveDirection();
+        if (requested == null) {
+            ResolvedMetric count = metrics.stream()
+                    .filter(metric -> metric.alias().equalsIgnoreCase("count"))
+                    .findFirst().orElse(null);
+            if (count != null) {
+                appendOrderBy(statement, count.alias(), QuerySpec.Direction.DESC);
+            } else if (!metrics.isEmpty()) {
+                appendOrderBy(statement, metrics.getFirst().alias(), QuerySpec.Direction.DESC);
+            } else if (!groups.isEmpty()) {
+                appendOrderBy(statement, groups.getFirst(), QuerySpec.Direction.ASC);
+            }
+            return;
+        }
+
+        String name = requested.column();
         String resolved = groups.stream().filter(group -> group.equalsIgnoreCase(name)).findFirst()
                 .orElseGet(() -> metrics.stream().map(ResolvedMetric::alias)
                         .filter(alias -> alias.equalsIgnoreCase(name)).findFirst()
                         .orElseThrow(() -> new IllegalArgumentException(
                                 "Unknown aggregate sort column '" + name + "'")));
-        statement.append(" ORDER BY ").append(sql.quote(resolved))
+        appendOrderBy(statement, resolved, requested.effectiveDirection());
+    }
+
+    private void appendOrderBy(StringBuilder statement, String column,
+                               QuerySpec.Direction direction) {
+        statement.append(" ORDER BY ").append(sql.quote(column))
                 .append(direction == QuerySpec.Direction.DESC ? " DESC" : " ASC");
     }
 
-    private static void ensureUniqueAliases(List<ResolvedMetric> metrics) {
+    private static void ensureUniqueOutputNames(List<String> groups,
+                                                List<ResolvedMetric> metrics) {
         Set<String> aliases = new HashSet<>();
         for (ResolvedMetric metric : metrics) {
-            if (!aliases.add(metric.alias())) {
+            String normalizedAlias = metric.alias().toLowerCase(Locale.ROOT);
+            if (!aliases.add(normalizedAlias)) {
                 throw new IllegalArgumentException("Duplicate metric alias '" + metric.alias() + "'");
             }
+            groups.stream().filter(group -> group.equalsIgnoreCase(metric.alias())).findFirst()
+                    .ifPresent(group -> {
+                        throw new IllegalArgumentException("Metric alias '" + metric.alias()
+                                + "' conflicts with group column '" + group + "'");
+                    });
         }
     }
 
