@@ -20,8 +20,11 @@ import com.example.dynamicmeta.data.DataSourceDefinitions;
 import com.example.dynamicmeta.data.SchemaCache;
 import com.example.dynamicmeta.data.SourceRegistry;
 import com.example.dynamicmeta.graph.GraphIds;
+import com.example.dynamicmeta.graph.GraphRelationship;
 import com.example.dynamicmeta.graph.OverlayStore;
 import com.example.dynamicmeta.graph.SchemaGraphBuilder;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import org.h2.jdbcx.JdbcDataSource;
 import org.junit.jupiter.api.AfterEach;
@@ -52,6 +55,7 @@ class SchemaSummaryTests {
     private OverlayStore overlay;
     private SchemaSummary summary;
     private SchemaCache cache;
+    private SchemaGraphBuilder graphBuilder;
     private MockMvc mvc;
 
     @BeforeEach
@@ -66,9 +70,9 @@ class SchemaSummaryTests {
         SchemaDiscoveryService discovery = new SchemaDiscoveryService(null, properties,
                 POLICY, FACTORY);
         cache = new SchemaCache(registry, discovery, properties);
-        SchemaGraphBuilder graph = new SchemaGraphBuilder(registry, cache);
+        graphBuilder = new SchemaGraphBuilder(registry, cache);
         overlay = new OverlayStore(tempDir.resolve("overlay.json"));
-        summary = new SchemaSummary(graph, overlay, cache, registry, properties);
+        summary = new SchemaSummary(graphBuilder, overlay, cache, registry, properties);
         mvc = MockMvcBuilders.standaloneSetup(new LlmController(summary)).build();
     }
 
@@ -94,11 +98,58 @@ class SchemaSummaryTests {
 
     @Test
     void proposedRelationshipAndHiddenColumnDoNotAppear() {
+        String proposal = GraphIds.relationshipId("commerce:orders.customer_id", "crm:customers.id");
+        assertThat(graphBuilder.build(null).relationships())
+                .anySatisfy(relationship -> {
+                    assertThat(relationship.id()).isEqualTo(proposal);
+                    assertThat(relationship.status()).isEqualTo(GraphRelationship.PROPOSED);
+                });
+
         String text = summary.text(summary.summarize(null, false));
 
         assertThat(text).contains("crm:customers", "commerce:orders")
                 .doesNotContain("commerce:orders.customer_id")
                 .doesNotContain("SECRET_NOTE");
+    }
+
+    @Test
+    void textForTwoSourceSchemaStaysUnder32Kb() throws Exception {
+        byte[] response = mvc.perform(get("/api/llm/schema"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsByteArray();
+
+        assertThat(response.length).isLessThan(32 * 1024);
+    }
+
+    @Test
+    void sourceFilterReturnsOnlyThatSourceAndUnknownSourceIsNotFound() throws Exception {
+        mvc.perform(get("/api/llm/schema").param("sources", "crm"))
+                .andExpect(status().isOk())
+                .andExpect(result -> assertThat(result.getResponse().getContentAsString())
+                        .contains("crm:customers")
+                        .doesNotContain("commerce:orders"));
+
+        mvc.perform(get("/api/llm/schema").param("sources", "unknown"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").exists());
+    }
+
+    @Test
+    void jsonAndTextFormatsContainTheSameEntities() throws Exception {
+        String text = mvc.perform(get("/api/llm/schema"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        String json = mvc.perform(get("/api/llm/schema").param("format", "json"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        JsonNode entities = new ObjectMapper().readTree(json).path("entities");
+        assertThat(entities).extracting(entity -> entity.path("id").asText())
+                .containsExactly("commerce:orders", "crm:customers");
+        assertThat(entities).allSatisfy(entity ->
+                assertThat(text).contains(entity.path("id").asText() + " ("));
+        assertThat(text.lines().filter(line -> line.matches("^[^\\s]+:[^\\s]+ \\(.*")))
+                .hasSameSizeAs(entities);
     }
 
     @Test
