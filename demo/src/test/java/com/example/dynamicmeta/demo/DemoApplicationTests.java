@@ -11,8 +11,11 @@ import com.example.dynamicmeta.data.SourceRegistry;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.ai.tool.ToolCallbackProvider;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.core.env.Environment;
 
 import io.modelcontextprotocol.client.McpClient;
@@ -67,6 +70,38 @@ class DemoApplicationTests {
                 .extracting(callback -> callback.getToolDefinition().name())
                 .containsExactlyInAnyOrder("list_sources", "describe_entity", "find_related",
                         "query_entity", "aggregate", "schema_summary");
+    }
+
+    @Test
+    void llmDisabledRegistersNoMcpToolsAndTurnsOffTheServer() {
+        try (ConfigurableApplicationContext context = runDemoContext(
+                "--schema-to-entity.llm-enabled=false")) {
+            assertThat(context.getBeansOfType(McpTools.class)).isEmpty();
+            assertThat(context.getBeansOfType(ToolCallbackProvider.class)).isEmpty();
+            assertThat(context.getBeansOfType(McpSyncServer.class)).isEmpty();
+            assertThat(context.getEnvironment().getProperty(
+                    "spring.ai.mcp.server.enabled", Boolean.class)).isFalse();
+        }
+    }
+
+    @Test
+    void llmEnabledWithoutGraphStartsWithoutMcpTools() {
+        try (ConfigurableApplicationContext context = runDemoContext(
+                "--schema-to-entity.llm-enabled=true",
+                "--schema-to-entity.graph-enabled=false")) {
+            assertThat(context.getBeansOfType(McpTools.class)).isEmpty();
+            assertThat(context.getBeansOfType(ToolCallbackProvider.class)).isEmpty();
+        }
+    }
+
+    @Test
+    void llmEnabledWithoutDataApiStartsWithoutMcpTools() {
+        try (ConfigurableApplicationContext context = runDemoContext(
+                "--schema-to-entity.llm-enabled=true",
+                "--schema-to-entity.data-api-enabled=false")) {
+            assertThat(context.getBeansOfType(McpTools.class)).isEmpty();
+            assertThat(context.getBeansOfType(ToolCallbackProvider.class)).isEmpty();
+        }
     }
 
     @Test
@@ -139,5 +174,15 @@ class DemoApplicationTests {
         assertThat(properties.getSnapshotDir()).isNotBlank();
         assertThat(yaml).contains("drift-check-interval: 15m");
         assertThat(yaml).contains("snapshot-dir: ${SNAPSHOT_DIR:");
+    }
+
+    private ConfigurableApplicationContext runDemoContext(String... properties) {
+        SpringApplication application = new SpringApplication(
+                SchemaToEntityDemoApplication.class);
+        application.setWebApplicationType(WebApplicationType.SERVLET);
+        String[] arguments = new String[properties.length + 1];
+        arguments[0] = "--server.port=0";
+        System.arraycopy(properties, 0, arguments, 1, properties.length);
+        return application.run(arguments);
     }
 }

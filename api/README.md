@@ -677,6 +677,11 @@ schema-to-entity:
   llm-enabled: true
 ```
 
+Both the HTTP LLM features and the demo's MCP tools require
+`data-api-enabled`, `graph-enabled` and `llm-enabled` to be `true`. If either
+the data API or graph is disabled, the underlying `LlmTools` service and the
+MCP tool callbacks are not registered.
+
 The intended flow is:
 
 1. The user gives the assistant a natural-language prompt.
