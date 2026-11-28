@@ -9,7 +9,19 @@ This project contains a complete schema-to-entity transformation system with UI,
 - `api/` - Reusable schema discovery Spring Boot starter (see [`api/README.md`](api/README.md))
 - `demo/` - Runnable host application used by Compose that consumes the starter
 - `docker-compose.yml` - Docker orchestration file
-- `Dockerfile` - Multi-stage Docker build configuration (builds `api`, then `demo`)
+- `Dockerfile` - Multi-stage Docker build configuration (builds `console`, then `api`, then `demo`)
+
+## Running the console locally
+
+The Vite dev server can run outside Docker:
+
+```bash
+npm --prefix console run dev
+```
+
+It serves the console under its base path at http://localhost:5174/console/ (not the
+root) and proxies `/api` requests to http://localhost:8081, so no CORS is needed.
+Set `CONSOLE_API_URL` to point the proxy at another API instance.
 
 ## Running the Application with Docker
 

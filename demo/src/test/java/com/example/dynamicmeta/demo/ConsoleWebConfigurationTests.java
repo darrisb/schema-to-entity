@@ -1,10 +1,19 @@
 package com.example.dynamicmeta.demo;
 
+import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.file.Files;
+import java.nio.file.Path;
+
 import org.junit.jupiter.api.Test;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.http.ResponseEntity;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -25,24 +34,39 @@ class ConsoleWebConfigurationTests {
     @Autowired
     private TestRestTemplate restTemplate;
 
+    @LocalServerPort
+    private int port;
+
     @Test
     void consoleDirectoryServesTheIndexPage() {
         ResponseEntity<String> response =
                 restTemplate.getForEntity("/console/", String.class);
 
         assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
+        assertThat(response.getHeaders().getContentType())
+                .asString().contains("text/html");
         assertThat(response.getBody()).contains("Console test index");
     }
 
     @Test
-    void consoleWithoutTrailingSlashReachesTheIndexPage() {
-        // TestRestTemplate follows the redirect, so a 200 here proves the
-        // whole chain: /console -> /console/ -> the index page.
-        ResponseEntity<String> response =
-                restTemplate.getForEntity("/console", String.class);
+    void consoleWithoutTrailingSlashRedirectsToTheCanonicalPath() throws Exception {
+        // A plain client that follows redirects cannot tell the intended
+        // 302 from a direct mapping, so disable automatic redirects and pin
+        // the response of the /console entry itself.
+        HttpClient client = HttpClient.newBuilder()
+                .followRedirects(HttpClient.Redirect.NEVER)
+                .build();
+        HttpRequest request = HttpRequest.newBuilder(
+                URI.create("http://localhost:" + port + "/console"))
+                .GET().build();
+        HttpResponse<String> response =
+                client.send(request, HttpResponse.BodyHandlers.ofString());
 
-        assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
-        assertThat(response.getBody()).contains("Console test index");
+        assertThat(response.statusCode()).isEqualTo(302);
+        // The view controller's "redirect:" view name is delivered as the
+        // absolute URL Spring builds for it; it must point at /console/.
+        assertThat(response.headers().firstValue("Location").orElseThrow())
+                .endsWith(ConsoleWebConfiguration.CONSOLE_PATH);
     }
 
     @Test
@@ -51,11 +75,15 @@ class ConsoleWebConfigurationTests {
         // paths (Vite base "/console/"), so those must resolve too.
         ResponseEntity<String> script =
                 restTemplate.getForEntity("/console/assets/index-test.js", String.class);
+        ResponseEntity<String> stylesheet =
+                restTemplate.getForEntity("/console/assets/index-test.css", String.class);
         ResponseEntity<String> index =
                 restTemplate.getForEntity("/console/index.html", String.class);
 
         assertThat(script.getStatusCode().is2xxSuccessful()).isTrue();
         assertThat(script.getBody()).contains("console test bundle");
+        assertThat(stylesheet.getStatusCode().is2xxSuccessful()).isTrue();
+        assertThat(stylesheet.getBody()).contains("system-ui");
         assertThat(index.getStatusCode().is2xxSuccessful()).isTrue();
         assertThat(index.getBody()).contains("Console test index");
     }
@@ -68,5 +96,25 @@ class ConsoleWebConfigurationTests {
                 String.class).getStatusCode().value()).isEqualTo(404);
         assertThat(restTemplate.getForEntity("/unknown", String.class)
                 .getStatusCode().value()).isEqualTo(404);
+    }
+
+    @Test
+    void dockerfileCopiesTheConsoleBundleIntoTheJar() throws IOException {
+        // The tests above run against the fixture bundle on the test classpath.
+        // This pins the image half of CN-009: the console stage must install
+        // and build, and hand its dist folder to the demo resources before
+        // the jar is packaged, so the real bundle lands at
+        // classpath:/static/console/.
+        String dockerfile = Files.readString(Path.of("../Dockerfile"));
+
+        assertThat(dockerfile).contains("AS console");
+        assertThat(dockerfile).contains("npm ci");
+        assertThat(dockerfile).contains("npm run build");
+        assertThat(dockerfile)
+                .contains("COPY --from=console /console/dist "
+                        + "./demo/src/main/resources/static/console/");
+        assertThat(dockerfile.indexOf("/console/dist ./demo"))
+                .isNotNegative()
+                .isLessThan(dockerfile.indexOf("-f demo/pom.xml package"));
     }
 }
