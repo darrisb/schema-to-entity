@@ -22,9 +22,11 @@
  * dirty rule, so a succeeded write never leaves them locked.
  *
  * A failing request leaves the rows as typed and shows the ApiError message
- * in the row's own error area, never a shared screen banner, so the message
- * sits next to the row that produced it. Load failures use the screen error
- * area. startLabels returns the same pending() accessor as the other screens:
+ * in the row's own error area, so the message sits next to the row that
+ * produced it; only when another row's reload has already replaced that card
+ * does the message fall back to the screen error area, since a detached row
+ * error would show nothing. Load failures use the screen error area.
+ * startLabels returns the same pending() accessor as the other screens:
  * it resolves once every screen task started so far has finished rendering.
  */
 
@@ -150,6 +152,13 @@ export function startLabels(
   }
 
   function showRowError(refs: RowRefs, error: unknown): void {
+    if (!refs.error.isConnected) {
+      // Another row's successful save re-rendered the rows while this write
+      // was in flight, so the card this error belongs to is detached and
+      // would show nothing; report through the visible screen banner instead.
+      showError(error);
+      return;
+    }
     refs.error.textContent =
       error instanceof ApiError
         ? error.message
@@ -251,11 +260,15 @@ export function startLabels(
    * freshly built one, so a still-connected card means the reload failed or
    * was superseded and the write-time disabled state would otherwise stick.
    * The dirty rule then decides what Save shows, exactly as on a failed write.
+   * Reaching here means the write itself succeeded, so an error the row shows
+   * from an earlier failed attempt is stale — and nothing else clears it,
+   * because renderRows() did not run and no field was retyped.
    */
   function restoreRowIfNotRerendered(refs: RowRefs): void {
     if (!refs.save.isConnected) {
       return;
     }
+    hideRowError(refs);
     setRowButtonsEnabled(refs, true);
     applySaveState(refs);
   }

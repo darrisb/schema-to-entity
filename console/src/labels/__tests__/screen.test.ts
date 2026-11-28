@@ -430,6 +430,43 @@ test("a save that succeeds but whose reload fails frees the row instead of leavi
   assert.equal(buttonIn(row, "clear")?.hasAttribute("disabled"), false, "Clear is freed too");
 });
 
+test("a Save retry that succeeds clears the row error left by the failed attempt", async () => {
+  let attempts = 0;
+  const fake = fakeClient([graphWith([USERS])], {
+    failReload: true,
+    set: async () => {
+      attempts += 1;
+      if (attempts === 1) {
+        throw new ApiError(500, "the overlay file could not be written");
+      }
+    },
+  });
+  const { container, done } = await mount(fake.client);
+  await pickUsers(container);
+
+  const row = rowCard(container, "demo:users");
+  assert.ok(row);
+  const save = buttonIn(row, "save");
+  assert.ok(save);
+  typeInto(inputIn(row, "label"), "People");
+  save.click();
+  await done();
+  assert.equal(rowError(row)?.hidden, false, "the failed attempt reports on the row");
+  assert.equal(fake.state.graphRequests.length, 1, "a failed save does not reload");
+
+  // Retry without retyping: no input event clears the row error, and this
+  // attempt's write succeeds — only its reload fails, so renderRows() never
+  // replaces the card. The stale message must not survive the successful write.
+  save.click();
+  await done();
+
+  assert.equal(fake.state.sets.length, 2, "the retry sent its own write");
+  assert.equal(fake.state.graphRequests.length, 2, "the retry asked for a reload");
+  assert.equal(rowError(row)?.hidden, true, "the succeeded write cleared the stale row error");
+  assert.equal(rowError(row)?.textContent, "");
+  assert.equal(errorArea(container)?.hidden, false, "the failed reload still shows in the banner");
+});
+
 test("a clear that succeeds but whose reload fails frees the row and keeps Save on the dirty rule", async () => {
   const fake = fakeClient([graphWith([USERS])], { failReload: true });
   const { container, done } = await mount(fake.client);
@@ -493,4 +530,50 @@ test("a second Save click while one is in flight sends exactly one request", asy
 
   assert.equal(fake.state.sets.length, 1, "one request for two clicks");
   assert.equal(fake.state.graphRequests.length, 2, "one reload for the one request");
+});
+
+test("a failed write whose row was replaced by another row's reload still shows its message", async () => {
+  // The slow row's write stays in flight while the fast row's save succeeds
+  // and its reload re-renders every card, detaching the slow row's.
+  let rejectSlow: (error: unknown) => void = () => {};
+  const slowWrite = new Promise<never>((_resolve, reject) => {
+    rejectSlow = reject;
+  });
+  const fake = fakeClient(
+    [graphWith([USERS]), graphWith([usersLabeled("People", "Registered accounts")])],
+    {
+      set: (id) => (id === "demo:users.username" ? slowWrite : Promise.resolve()),
+    },
+  );
+  const { container, done } = await mount(fake.client);
+  await pickUsers(container);
+
+  const slowRow = rowCard(container, "demo:users.username");
+  assert.ok(slowRow);
+  typeInto(inputIn(slowRow, "label"), "Display name");
+  buttonIn(slowRow, "save")?.click();
+
+  const fastRow = rowCard(container, "demo:users");
+  assert.ok(fastRow);
+  typeInto(inputIn(fastRow, "label"), "People");
+  buttonIn(fastRow, "save")?.click();
+
+  // Let the fast save's chain (setLabel, reload, re-render) drain; the slow
+  // write is still in flight, so awaiting done() here would never settle.
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, 0);
+  });
+  assert.equal(slowRow.isConnected, false, "the reload replaced the other row's card");
+  assert.ok(rowCard(container, "demo:users.username"), "a fresh card stands in its place");
+
+  // Now the slow write fails: its card is detached, so the message must
+  // surface somewhere visible instead of vanishing into that node.
+  rejectSlow(new ApiError(400, "label must not be blank"));
+  await done();
+
+  assert.equal(rowError(slowRow)?.hidden, true, "the detached card keeps no message");
+  const area = errorArea(container);
+  assert.ok(area);
+  assert.equal(area.hidden, false);
+  assert.equal(area.textContent, "label must not be blank");
 });
