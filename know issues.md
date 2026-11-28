@@ -93,8 +93,9 @@ change repeatedly.
 ### 6. Security: unauthenticated arbitrary database connections
 
 **Impact:** `POST /api/schema/extract-postgres` accepts a caller-supplied connection
-string with credentials and opens it. It is reachable through the UI's nginx proxy with no
-authentication. `schema-to-entity.explicit-connections-enabled` disables it and now
+string with credentials and opens it. The API serves it directly, e.g.
+`http://localhost:8081/api/schema/extract-postgres` in the bundled compose, and the
+console reaches it same-origin through `/console/`, with no authentication. `schema-to-entity.explicit-connections-enabled` disables it and now
 defaults to `false` (FX-008), but `demo/src/main/resources/application.yml` still sets it
 to `true` for local development, so the demo endpoint remains exposed when unauthenticated.
 
