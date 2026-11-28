@@ -25,6 +25,7 @@ and how to upgrade the vendored UI library.
 The Vite dev server can run outside Docker:
 
 ```bash
+npm --prefix console install   # first time only; see console/README.md
 npm --prefix console run dev
 ```
 
