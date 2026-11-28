@@ -11,7 +11,16 @@ console, API, and database components.
 - `docker-compose.yml` - Docker orchestration file
 - `Dockerfile` - Multi-stage Docker build configuration (builds `console`, then `api`, then `demo`)
 
-## Running the console locally
+## Console
+
+The admin console (`console/`) is a framework-free TypeScript + Vite single-page
+app with five screens — Relationships, Links, Labels, Data and Drift — built on
+the vendored `@visual-ui/*` Web Components. It has no authentication yet, like
+the rest of the admin API, and must not be exposed beyond the local machine.
+See [`console/README.md`](console/README.md) for the screens, running, testing
+and how to upgrade the vendored UI library.
+
+### Running the console locally
 
 The Vite dev server can run outside Docker:
 
