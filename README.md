@@ -5,6 +5,7 @@ This project contains a complete schema-to-entity transformation system with UI,
 ## Project Structure
 
 - `ui/` - Angular frontend application
+- `console/` - Admin console (plain TypeScript + Vite; built inside the API image and served at `/console/`)
 - `api/` - Reusable schema discovery Spring Boot starter (see [`api/README.md`](api/README.md))
 - `demo/` - Runnable host application used by Compose that consumes the starter
 - `docker-compose.yml` - Docker orchestration file
@@ -25,6 +26,7 @@ docker-compose up --build
 ```
 
 2. Access the application:
+   - Console: http://localhost:8081/console/ (served by the API itself, same origin as the API)
    - UI: http://localhost:8082
    - Schema API: http://localhost:8081/api/schema
 
