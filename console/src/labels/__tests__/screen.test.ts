@@ -37,6 +37,8 @@ function fakeClient(
   behaviour: {
     set?: (id: string) => Promise<void>;
     remove?: (id: string) => Promise<void>;
+    /** Makes every getGraph after the first fail, as a post-write reload would. */
+    failReload?: boolean;
   } = {},
 ): { client: ApiClient; state: FakeState } {
   const state: FakeState = { graphRequests: [], sets: [], removals: [] };
@@ -46,6 +48,9 @@ function fakeClient(
   const client: ApiClient = {
     getGraph: async (includeRejected: boolean): Promise<SchemaGraph> => {
       state.graphRequests.push(includeRejected);
+      if (behaviour.failReload && state.graphRequests.length > 1) {
+        throw new ApiError(500, "the document could not be re-read");
+      }
       const graph = graphs[Math.min(state.graphRequests.length - 1, graphs.length - 1)];
       if (graph === undefined) {
         throw new ApiError(500, "the graph could not be built");
@@ -396,6 +401,51 @@ test("a failed Clear shows the message on its row and frees the buttons", async 
   assert.equal(error.textContent, "the overlay file could not be written");
   assert.equal(fake.state.graphRequests.length, 1, "a failed clear does not reload");
   assert.equal(clear.hasAttribute("disabled"), false, "the row stays usable");
+});
+
+test("a save that succeeds but whose reload fails frees the row instead of leaving it locked", async () => {
+  const fake = fakeClient([graphWith([USERS])], { failReload: true });
+  const { container, done } = await mount(fake.client);
+  await pickUsers(container);
+
+  const row = rowCard(container, "demo:users");
+  assert.ok(row);
+  typeInto(inputIn(row, "label"), "People");
+  buttonIn(row, "save")?.click();
+  await done();
+
+  assert.deepEqual(fake.state.sets, [
+    { id: "demo:users", label: "People", description: "Registered accounts" },
+  ]);
+  assert.equal(fake.state.graphRequests.length, 2, "the save still asked for a reload");
+  // The reload failed into the screen banner, and the card it left in place
+  // is usable again: dirty rule free, buttons unlocked.
+  const area = errorArea(container);
+  assert.ok(area);
+  assert.equal(area.hidden, false);
+  assert.equal(area.textContent, "the document could not be re-read");
+  assert.equal(row.isConnected, true, "the failed reload kept the rows as typed");
+  assert.equal(inputIn(row, "label").value, "People");
+  assert.equal(buttonIn(row, "save")?.hasAttribute("disabled"), false, "Save is freed for a retry");
+  assert.equal(buttonIn(row, "clear")?.hasAttribute("disabled"), false, "Clear is freed too");
+});
+
+test("a clear that succeeds but whose reload fails frees the row and keeps Save on the dirty rule", async () => {
+  const fake = fakeClient([graphWith([USERS])], { failReload: true });
+  const { container, done } = await mount(fake.client);
+  await pickUsers(container);
+
+  const row = rowCard(container, "demo:users");
+  assert.ok(row);
+  buttonIn(row, "clear")?.click();
+  await done();
+
+  assert.deepEqual(fake.state.removals, ["demo:users"]);
+  assert.equal(fake.state.graphRequests.length, 2, "the clear still asked for a reload");
+  assert.equal(errorArea(container)?.hidden, false, "the reload failure shows in the screen banner");
+  // Nothing is typed, so the dirty rule keeps Save locked while Clear frees up.
+  assert.equal(buttonIn(row, "save")?.hasAttribute("disabled"), true);
+  assert.equal(buttonIn(row, "clear")?.hasAttribute("disabled"), false);
 });
 
 test("a reload that finds the picked entity gone clears the selection and the rows", async () => {

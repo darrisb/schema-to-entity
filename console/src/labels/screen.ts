@@ -14,7 +14,12 @@
  * and the entity dropdown keeps its choice, because ui-dropdown restores its
  * value across an options update that still carries it. If the reload shows
  * the chosen entity is gone, the selection is cleared explicitly — ui-dropdown
- * would otherwise keep showing an id nothing renders against.
+ * would otherwise keep showing an id nothing renders against. Because that
+ * reload rebuilds every row from the document, edits typed into a row that
+ * was not saved are discarded: the screen works one row at a time. If the
+ * reload request itself fails, its error goes to the screen banner and the
+ * rows stay as typed — the written row's buttons are then freed again by the
+ * dirty rule, so a succeeded write never leaves them locked.
  *
  * A failing request leaves the rows as typed and shows the ApiError message
  * in the row's own error area, never a shared screen banner, so the message
@@ -240,6 +245,21 @@ export function startLabels(
     }
   }
 
+  /**
+   * Frees a row's buttons when the post-write reload did not re-render: a
+   * successful load replaces this card (and its detached buttons) with a
+   * freshly built one, so a still-connected card means the reload failed or
+   * was superseded and the write-time disabled state would otherwise stick.
+   * The dirty rule then decides what Save shows, exactly as on a failed write.
+   */
+  function restoreRowIfNotRerendered(refs: RowRefs): void {
+    if (!refs.save.isConnected) {
+      return;
+    }
+    setRowButtonsEnabled(refs, true);
+    applySaveState(refs);
+  }
+
   /** One row: heading, the two prefilled inputs, Save (dirty-gated) and Clear. */
   function buildRow(row: LabelRow): HTMLElement {
     const card = document.createElement("ui-card");
@@ -323,6 +343,9 @@ export function startLabels(
     try {
       await client.setLabel(id, change.label, change.description);
       await load();
+      // load() swallows its own failures, so a thrown error is not the only
+      // way the rows can survive the reload unchanged.
+      restoreRowIfNotRerendered(refs);
     } catch (error) {
       // The rows stay exactly as typed: only this row's card reports the
       // failure, and Save returns to whatever the dirty rule now says.
@@ -338,6 +361,7 @@ export function startLabels(
     try {
       await client.removeLabel(id);
       await load();
+      restoreRowIfNotRerendered(refs);
     } catch (error) {
       showRowError(refs, error);
       setRowButtonsEnabled(refs, true);
