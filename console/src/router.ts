@@ -2,10 +2,14 @@
  * Hash router for the console.
  *
  * parseRoute is pure string handling and testable without a DOM; start wires
- * hashchange events to the screen renderers below. The screens are
- * placeholders — later tasks replace each renderScreen branch with the real
- * admin screen.
+ * hashchange events to the screen renderers below. The relationships screen
+ * is real (CN-004) and owns its container through startRelationships; the
+ * remaining routes are placeholders whose tasks replace their renderScreen
+ * branch the same way.
  */
+
+import { createClient, type ApiClient } from "./api/client.js";
+import { startRelationships } from "./relationships/screen.js";
 
 export type Route = "relationships" | "links" | "labels" | "data" | "drift";
 
@@ -28,7 +32,7 @@ const SCREEN_TITLES: Record<Route, string> = {
 };
 
 const SCREEN_DESCRIPTIONS: Record<Route, string> = {
-  relationships: "Review and confirm proposed entity relationships. (Placeholder)",
+  relationships: "Review and confirm proposed entity relationships.",
   links: "Manage manual links between entities. (Placeholder)",
   labels: "Edit entity and field labels. (Placeholder)",
   data: "Browse the read-only data API. (Placeholder)",
@@ -46,7 +50,17 @@ export function parseRoute(hash: string): Route {
 }
 
 /** Replaces the container contents with the screen for one route. */
-export function renderScreen(container: HTMLElement, route: Route): void {
+export function renderScreen(
+  container: HTMLElement,
+  route: Route,
+  client: ApiClient = createClient(),
+): void {
+  if (route === "relationships") {
+    // The screen fetches on its own; the returned settle function is for
+    // tests, and screen failures are reported in the screen's error area.
+    void startRelationships(container, client);
+    return;
+  }
   const card = document.createElement("ui-card");
   card.setAttribute("title", SCREEN_TITLES[route]);
   card.setAttribute("description", SCREEN_DESCRIPTIONS[route]);
