@@ -237,3 +237,33 @@ test("setRelationshipButtonsEnabled disables and re-enables a card's buttons", (
   setRelationshipButtonsEnabled(list, "ghost:id->none:there", false);
   assert.ok(buttons().every((b) => !b.hasAttribute("disabled")));
 });
+
+test("a disabled card button swallows clicks until it is re-enabled", () => {
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const { handlers, calls } = recorder();
+  renderRelationships(
+    container,
+    emptyGroups({ proposed: [relationship(PROPOSED_ID, "proposed")] }),
+    emptyGraph(),
+    handlers,
+  );
+
+  setRelationshipButtonsEnabled(container, PROPOSED_ID, false);
+  const confirm = cardIn(container, "proposed", PROPOSED_ID).querySelector<HTMLElement>(
+    'ui-button[label="Confirm"]',
+  );
+  const reject = cardIn(container, "proposed", PROPOSED_ID).querySelector<HTMLElement>(
+    'ui-button[label="Reject"]',
+  );
+  assert.ok(confirm && reject);
+  // Clicks that reach the host while the decision is in flight stay silent:
+  // the attribute alone would not stop the host listener without the guard.
+  confirm.click();
+  reject.click();
+  assert.deepEqual(calls, []);
+
+  setRelationshipButtonsEnabled(container, PROPOSED_ID, true);
+  confirm.click();
+  assert.deepEqual(calls, [`confirm:${PROPOSED_ID}`]);
+});

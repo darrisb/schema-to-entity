@@ -308,7 +308,7 @@ test("a failed decision shows the error and re-enables the buttons; success then
   assert.equal(sectionOf(container, "confirmed")?.querySelectorAll("ui-card").length, 1);
 });
 
-test("the Refresh button re-reads the document with in-flight feedback", async () => {
+test("the Refresh button re-reads the document, with in-flight feedback", async () => {
   const id = PROPOSED_ID;
   const fake = fakeClient([graphWith([relationship(id, "proposed")]), graphWith([])]);
   const { container, done } = await mount(fake.client);
@@ -320,18 +320,18 @@ test("the Refresh button re-reads the document with in-flight feedback", async (
   assert.ok(refresh, "the header card carries the Refresh button");
 
   refresh.click();
-  // While the reload is in flight the loading line is back and Refresh is
-  // disabled, so the user sees the request and a second click is ignored.
+  // While the reload is in flight the loading line is back.
   assert.ok(header.querySelector('ui-text[content="Loading the schema document…"]'));
-  assert.ok(refresh.hasAttribute("disabled"));
+  // Refresh stays clickable as the escape hatch for a stuck request: this
+  // second click starts a newer load, and the loadSeq guard drops the first
+  // response so only the newest render lands.
   refresh.click();
 
   await done();
 
-  assert.equal(fake.state.graphRequests.length, 2, "one click, one reload");
-  assert.equal(cardOf(container, id), null, "the refreshed (empty) document was re-rendered");
+  assert.equal(fake.state.graphRequests.length, 3, "two clicks, two reloads");
+  assert.equal(cardOf(container, id), null, "the latest document was re-rendered");
   assert.equal(header.querySelector('ui-text[content="Loading the schema document…"]'), null);
-  assert.equal(refresh.hasAttribute("disabled"), false);
 });
 
 test("a stale load response cannot overwrite a newer render", async () => {
@@ -344,7 +344,7 @@ test("a stale load response cannot overwrite a newer render", async () => {
   const fake = fakeClient([], {
     getGraph: () => {
       graphCalls += 1;
-      // A's reload (call 2) hangs until after B's newer reload answered.
+      // A's reload (call 2) hangs until after B has issued its newer reload.
       if (graphCalls === 2) {
         return stale.promise;
       }
@@ -358,26 +358,57 @@ test("a stale load response cannot overwrite a newer render", async () => {
   assert.ok(confirmA && confirmB);
   confirmA.click();
   confirmB.click();
-  // pending() tracks the most recent click's work, which completes first.
-  await done();
-  assert.deepEqual(sectionCardIds(container, "proposed"), [idA], "the fresh document rendered");
-  assert.deepEqual(sectionCardIds(container, "confirmed"), [idB]);
-
-  // A's reload now answers with the old document, which still shows B proposed.
+  // Both clicks have raised loadSeq to 3 by the time any response lands, so
+  // pending() — which drains only when every started task settles — covers the
+  // late answer too without any hand-rolled flush.
   stale.resolve(bothProposed);
-  // Let the continuation of that late response run to the end.
-  await new Promise((resolve) => {
-    setTimeout(resolve, 0);
-  });
+  await done();
 
-  assert.deepEqual(
-    sectionCardIds(container, "proposed"),
-    [idA],
-    "the stale response was discarded, not re-rendered",
-  );
+  // B's newer reload rendered bConfirmed; A's response (bothProposed, with B
+  // still proposed) was discarded instead of re-rendered over it.
+  assert.deepEqual(sectionCardIds(container, "proposed"), [idA], "the fresh document rendered");
   assert.deepEqual(sectionCardIds(container, "confirmed"), [idB]);
   const header = container.querySelector("ui-card");
   assert.ok(header);
   assert.equal(header.querySelector('ui-text[content="Loading the schema document…"]'), null);
-  assert.equal(buttonIn(header, "refresh")?.hasAttribute("disabled"), false);
+});
+
+test("a decision whose reload is superseded by a failing load re-enables its card", async () => {
+  const idA = "a:a.a->b:b.b";
+  const idB = "c:c.c->d:d.d";
+  const bothProposed = graphWith([relationship(idA, "proposed"), relationship(idB, "proposed")]);
+  const stale = deferred<SchemaGraph>();
+  let graphCalls = 0;
+  const fake = fakeClient([], {
+    getGraph: () => {
+      graphCalls += 1;
+      if (graphCalls === 2) {
+        return stale.promise; // A's reload hangs, then is discarded as stale
+      }
+      if (graphCalls === 3) {
+        return Promise.reject(new ApiError(503, "api is restarting")); // B's fails
+      }
+      return Promise.resolve(bothProposed);
+    },
+  });
+  const { container, done } = await mount(fake.client);
+
+  buttonIn(cardOf(container, idA), "confirm")?.click();
+  buttonIn(cardOf(container, idB), "confirm")?.click();
+  stale.resolve(bothProposed);
+  await done();
+
+  // The superseding load failed, so nothing re-rendered: the screen must show
+  // the error and free both completed decisions' cards, not leave them dead.
+  const area = errorArea(container);
+  assert.ok(area);
+  assert.equal(area.textContent, "api is restarting");
+  assert.equal(area.hidden, false);
+  for (const id of [idA, idB]) {
+    for (const action of ["confirm", "reject"]) {
+      const button = buttonIn(cardOf(container, id), action);
+      assert.ok(button, `card ${id} still offers ${action}`);
+      assert.equal(button.hasAttribute("disabled"), false, `${id} ${action} is clickable again`);
+    }
+  }
 });

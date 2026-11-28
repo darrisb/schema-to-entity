@@ -5,13 +5,16 @@
  * only in the response when the flag is set — shapes it with the pure model
  * and renders it through view.ts. A card click disables that card's buttons,
  * calls the client and, on success, reloads the document and re-renders; on
- * failure it shows the ApiError message in the error area above the list and
- * re-enables the buttons. While any screen work is in flight the Refresh
- * button is disabled (and its listener ignores clicks), and every load
- * re-shows the loading line; a load only renders when it is still the newest
- * request, so a late stale response cannot overwrite fresher data.
- * startRelationships returns a pending() accessor that resolves when the
- * initial load or the most recent click's work has settled, which is what
+ * failure it shows the ApiError message in the error area above the list.
+ * Re-enabling always targets the exact button nodes captured at click time,
+ * so a late failure can never re-enable a newer card that another decision is
+ * running on, and a decision whose reload was superseded still frees its own
+ * card. Every load re-shows the loading line; a load only renders when it is
+ * still the newest request, so a late stale response cannot overwrite fresher
+ * data. Refresh stays clickable: clicking it while a request is stuck starts a
+ * newer load that supersedes it, which is the escape hatch for a hung request.
+ * startRelationships returns a pending() accessor that resolves once every
+ * started screen work has settled (the in-flight queue drains), which is what
  * the DOM tests await; the router ignores it.
  */
 
@@ -19,14 +22,15 @@ import { ApiError, type ApiClient } from "../api/client.js";
 import { groupRelationships } from "./model.js";
 import {
   renderRelationships,
+  setButtonsEnabled,
   setRelationshipButtonsEnabled,
   type RelationshipHandlers,
 } from "./view.js";
 
 /**
  * Builds the relationships screen inside container, fetching through client.
- * Returns a function resolving once the latest screen work (first load,
- * Refresh, or a button's decide-and-reload) has finished rendering.
+ * Returns a function resolving once all screen work started so far (first
+ * load, Refresh, or buttons' decide-and-reload) has finished rendering.
  */
 export function startRelationships(
   container: HTMLElement,
@@ -44,10 +48,9 @@ export function startRelationships(
   refresh.setAttribute("data-action", "refresh");
   refresh.setAttribute("variant", "secondary");
   refresh.addEventListener("click", () => {
-    // A click that reaches the disabled host must not start a second load.
-    if (refresh.hasAttribute("disabled")) {
-      return;
-    }
+    // Never disabled on purpose: clicking while a request is stuck raises
+    // loadSeq and starts a superseding load, so the screen can recover from
+    // a hung request. Superseded responses are dropped by load's seq guard.
     begin(load);
   });
   header.appendChild(refresh);
@@ -66,20 +69,26 @@ export function startRelationships(
 
   container.replaceChildren(header, errorArea, list);
 
-  /** The most recent async work; load and runDecision catch, so it never rejects. */
-  let current: Promise<void> = Promise.resolve();
-  /** Screen work in flight (loads and decisions); Refresh stays disabled until it drains. */
+  /** Screen work in flight (loads and decisions); the queue drains to zero. */
   let inFlight = 0;
   /** Sequence of getGraph requests; only the newest response is allowed to render. */
   let loadSeq = 0;
+  /** Resolves when the in-flight queue drains; replaced whenever work starts. */
+  let drained: Promise<void> = Promise.resolve();
+  let markDrained: () => void = () => {};
 
   function begin(work: () => Promise<void>): void {
     inFlight += 1;
-    refresh.setAttribute("disabled", "");
-    current = work().finally(() => {
+    if (inFlight === 1) {
+      drained = new Promise<void>((resolve) => {
+        markDrained = resolve;
+      });
+    }
+    // load and runDecision catch everything, so work() never rejects here.
+    void work().finally(() => {
       inFlight -= 1;
       if (inFlight === 0) {
-        refresh.removeAttribute("disabled");
+        markDrained();
       }
     });
   }
@@ -123,13 +132,18 @@ export function startRelationships(
 
   async function runDecision(id: string, action: () => Promise<void>): Promise<void> {
     clearError();
-    setRelationshipButtonsEnabled(list, id, false);
+    const decided = setRelationshipButtonsEnabled(list, id, false);
     try {
       await action();
       await load();
     } catch (error) {
       showError(error);
-      setRelationshipButtonsEnabled(list, id, true);
+    } finally {
+      // Re-enable the exact nodes clicked, never a card re-queried by id: if
+      // this decision's reload rendered (or a newer one did), these nodes are
+      // detached and this is a no-op; if the reload failed or was discarded as
+      // stale, the same card is still on screen and must not stay disabled.
+      setButtonsEnabled(decided, true);
     }
   }
 
@@ -151,5 +165,5 @@ export function startRelationships(
 
   begin(load);
 
-  return () => current;
+  return () => drained;
 }

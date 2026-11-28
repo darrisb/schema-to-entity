@@ -69,24 +69,35 @@ export function renderRelationships(
 
 /**
  * Disables or re-enables every ui-button inside the card for one
- * relationship id. No-op when that card is not under root — a reload may
- * already have replaced it.
+ * relationship id and returns the affected buttons. No-op when that card is
+ * not under root — a reload may already have replaced it. The returned nodes
+ * let a caller re-toggle exactly the card the user clicked after an await,
+ * without re-querying by id: a re-render may meanwhile have put a different,
+ * live card under the same id.
  */
 export function setRelationshipButtonsEnabled(
   root: HTMLElement,
   id: string,
   enabled: boolean,
-): void {
+): HTMLElement[] {
+  const buttons: HTMLElement[] = [];
   for (const card of root.querySelectorAll("ui-card")) {
     if (card.getAttribute("data-relationship-id") !== id) {
       continue;
     }
-    for (const button of card.querySelectorAll("ui-button")) {
-      if (enabled) {
-        button.removeAttribute("disabled");
-      } else {
-        button.setAttribute("disabled", "");
-      }
+    buttons.push(...Array.from(card.querySelectorAll<HTMLElement>("ui-button")));
+  }
+  setButtonsEnabled(buttons, enabled);
+  return buttons;
+}
+
+/** Sets or clears disabled on exactly these button nodes, wherever they sit. */
+export function setButtonsEnabled(buttons: readonly HTMLElement[], enabled: boolean): void {
+  for (const button of buttons) {
+    if (enabled) {
+      button.removeAttribute("disabled");
+    } else {
+      button.setAttribute("disabled", "");
     }
   }
 }
