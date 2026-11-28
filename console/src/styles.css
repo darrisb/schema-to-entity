@@ -128,3 +128,30 @@ main {
 .links-list ui-text {
   margin-top: 0.35rem;
 }
+
+/* CN-006: labels screen */
+.labels-rows {
+  margin-top: 1.25rem;
+}
+
+.labels-rows ui-card,
+.labels-rows ui-text {
+  margin-top: 0.6rem;
+}
+
+.label-row-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.75rem 1rem;
+}
+
+.label-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.row-error {
+  margin-top: 0.75rem;
+}
