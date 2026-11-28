@@ -101,3 +101,30 @@ main {
   gap: 0.5rem;
   margin-top: 0.75rem;
 }
+
+/* CN-005: links screen */
+.link-form-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.75rem 1rem;
+}
+
+.link-form-actions {
+  margin-top: 0.75rem;
+}
+
+.link-form-error {
+  margin-top: 0.75rem;
+}
+
+.links-list {
+  margin-top: 1.75rem;
+}
+
+.links-list ui-card {
+  margin-top: 0.6rem;
+}
+
+.links-list ui-text {
+  margin-top: 0.35rem;
+}
