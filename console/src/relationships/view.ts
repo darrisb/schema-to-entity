@@ -118,7 +118,10 @@ function buildCard(
     card.appendChild(textRow(`Confidence: ${percent}%`));
   }
   const evidence = evidenceText(relationship);
-  card.appendChild(textRow(`Evidence: ${evidence === "" ? "none" : evidence}`));
+  if (evidence !== "") {
+    // Declared foreign keys need no evidence; an empty line would read like a gap.
+    card.appendChild(textRow(`Evidence: ${evidence}`));
+  }
 
   const buttons = buttonsFor(relationship, handlers);
   if (buttons.length > 0) {

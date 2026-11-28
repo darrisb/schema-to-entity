@@ -147,11 +147,10 @@ test("proposed cards carry summary, origin, confidence and evidence and Confirm/
   assert.equal(confidenceRow?.shadowRoot?.querySelector('[part="text"]')?.textContent, "Confidence: 80%");
 });
 
-test("confidence is shown only when present", () => {
+test("confidence and evidence are shown only when present", () => {
   const container = render(emptyGroups({ proposed: [relationship(PROPOSED_ID, "proposed")] }));
   assert.deepEqual(rowTexts(cardIn(container, "proposed", PROPOSED_ID)), [
     "Origin: inferred",
-    "Evidence: none",
   ]);
 });
 
