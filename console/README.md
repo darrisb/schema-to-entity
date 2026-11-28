@@ -9,6 +9,8 @@ with its logic split so the pure parts are testable without a browser:
 
 - `<screen>/model.ts` — data shaping and validation, no DOM.
 - `<screen>/screen.ts` — thin controller: fetch, wire events, build elements.
+- `relationships/view.ts` — element building for that screen (the only screen
+  that splits rendering out of `screen.ts`).
 - `<screen>/__tests__/` — `node:test` suites; DOM tests run under happy-dom
   through `src/test-support/dom.ts`.
 
@@ -26,7 +28,7 @@ It only calls Schema to Entity's own `/api/...` endpoints with relative URLs
 
 | Route | What it does |
 | --- | --- |
-| `#/relationships` | Lists proposed relationships grouped by status (from `GET /api/graph`) with Confirm/Reject buttons. Decisions go through `PUT`/`POST /api/graph/overlay/relationships`, then the document reloads. A Refresh button re-fetches (also the escape hatch for a hung request). |
+| `#/relationships` | Lists proposed relationships grouped by status (from `GET /api/graph`) with Confirm/Reject buttons. Decisions go through `PUT /api/graph/overlay/relationships` (Undo sends status `null`) and Remove through `DELETE /api/graph/overlay/relationships`, then the document reloads. A Refresh button re-fetches (also the escape hatch for a hung request). |
 | `#/links` | Form to assert a manual link between two columns (entity and column pickers are `ui-dropdown`s refilled per selection), plus the list of existing manual links with Remove buttons. Validation is local first, so an invalid pair sends no request. |
 | `#/labels` | Picks an entity, then shows one card per entity/column with Label and Description inputs and Save/Clear pairs wired to `PUT`/`DELETE /api/graph/overlay/labels`. Save is disabled until a field differs from its stored value; a successful write reloads the document. |
 | `#/data` | Read-only browser for the data API. Pick an entity, and a `ui-table` pages and sorts its rows (`GET /api/data/{source}/{entity}`); the table's own page-change and sort-change events drive the queries. The screen never mutates rows. |
@@ -85,8 +87,11 @@ code they cover.
 
 The four `@visual-ui/*` packages come from the native-ui-library repository
 (`visual-ui-builder`) as tarballs pinned in `vendor/` and installed with
-`file:vendor/<name>.tgz` dependencies, so builds work offline and inside
-Docker without a registry. To upgrade (also documented in
+`file:vendor/<name>.tgz` dependencies, so the console never depends on a
+private registry for `@visual-ui`. The dev dependencies (`vite`,
+`typescript`, `happy-dom`, `@types/node`) still come from npm, so a normal
+registry (or a warm cache) is required for `npm install` and `npm ci`,
+including the Docker build. To upgrade (also documented in
 [`vendor/README.md`](vendor/README.md)):
 
 1. In the library repo, run `npm run pack:packages`.
