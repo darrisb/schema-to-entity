@@ -155,3 +155,13 @@ main {
 .row-error {
   margin-top: 0.75rem;
 }
+
+/* CN-007: data screen */
+.data-results {
+  margin-top: 1.25rem;
+}
+
+.data-results ui-text,
+.data-results ui-table {
+  margin-top: 0.6rem;
+}
