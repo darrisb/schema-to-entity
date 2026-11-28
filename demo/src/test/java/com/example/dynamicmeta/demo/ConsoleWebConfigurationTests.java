@@ -1,12 +1,9 @@
 package com.example.dynamicmeta.demo;
 
-import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.nio.file.Files;
-import java.nio.file.Path;
 
 import org.junit.jupiter.api.Test;
 
@@ -26,7 +23,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * handling serves those files; {@link ConsoleWebConfiguration} adds the
  * {@code /console} and {@code /console/} entries. The random-port environment
  * runs a real container so the forward is dispatched and the assertions see
- * the delivered bytes, not just a recorded view name.
+ * the delivered bytes, not just a recorded view name. {@link
+ * ConsoleDockerfileTests} covers the image that produces the real bundle.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class ConsoleWebConfigurationTests {
@@ -96,25 +94,5 @@ class ConsoleWebConfigurationTests {
                 String.class).getStatusCode().value()).isEqualTo(404);
         assertThat(restTemplate.getForEntity("/unknown", String.class)
                 .getStatusCode().value()).isEqualTo(404);
-    }
-
-    @Test
-    void dockerfileCopiesTheConsoleBundleIntoTheJar() throws IOException {
-        // The tests above run against the fixture bundle on the test classpath.
-        // This pins the image half of CN-009: the console stage must install
-        // and build, and hand its dist folder to the demo resources before
-        // the jar is packaged, so the real bundle lands at
-        // classpath:/static/console/.
-        String dockerfile = Files.readString(Path.of("../Dockerfile"));
-
-        assertThat(dockerfile).contains("AS console");
-        assertThat(dockerfile).contains("npm ci");
-        assertThat(dockerfile).contains("npm run build");
-        assertThat(dockerfile)
-                .contains("COPY --from=console /console/dist "
-                        + "./demo/src/main/resources/static/console/");
-        assertThat(dockerfile.indexOf("/console/dist ./demo"))
-                .isNotNegative()
-                .isLessThan(dockerfile.indexOf("-f demo/pom.xml package"));
     }
 }
