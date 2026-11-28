@@ -40,7 +40,7 @@ const SCREEN_DESCRIPTIONS: Record<Route, string> = {
   links: "Manage manual links between entities.",
   labels: "Edit entity and field labels.",
   data: "Browse the read-only data API.",
-  drift: "Inspect schema drift against baselines. (Placeholder)",
+  drift: "Inspect schema drift against baselines.",
 };
 
 function isRoute(value: string): value is Route {
