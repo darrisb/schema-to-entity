@@ -76,9 +76,9 @@ schema-to-entity:
   page-allowed-origins:
     - http://localhost:5173
   # Origins allowed to call the read-only data API from a browser. This covers
-  # /api/data/** only. Add the deployed UI origin for production.
+  # /api/data/** only. The console is served by the API itself (same origin,
+  # no CORS needed). Add the deployed UI origin for production.
   data-allowed-origins:
-    - http://localhost:4200   # Angular UI dev server
     - http://localhost:5173   # UI library examples (Vite dev server)
   sources:
     demo:

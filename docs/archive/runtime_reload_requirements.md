@@ -1,4 +1,4 @@
-superseded in November 2026 because the product is read-only; kept for history
+superseded in November 2026 because the product is read-only; kept for history. The Angular `ui` app this document describes was retired by CN-010 and superseded by `console/`; the Angular references below are historical.
 
 # Runtime Reload and Java Migration Requirements
 

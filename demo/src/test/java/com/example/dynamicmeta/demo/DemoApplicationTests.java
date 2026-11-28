@@ -154,9 +154,12 @@ class DemoApplicationTests {
     }
 
     @Test
-    void localUiDevServerIsAnAllowedOrigin() {
+    void uiLibraryDevServerIsAnAllowedOriginAndTheAngularUiIsNot() {
+        // CN-010: the Angular UI (port 4200) is retired; the console is served
+        // by the API itself, so it needs no CORS entry.
         assertThat(properties.getDataAllowedOrigins())
-                .contains("http://localhost:4200");
+                .contains("http://localhost:5173")
+                .doesNotContain("http://localhost:4200");
     }
 
     @Test
@@ -186,6 +189,12 @@ class DemoApplicationTests {
         assertThat(yaml).contains("page-allowed-origins:");
         assertThat(yaml).contains("- http://localhost:5173");
         assertThat(compose).contains("PAGES_DIR: /data/pages");
+
+        // CN-010: the retired Angular UI must not come back — compose no longer
+        // publishes its 8082 port or builds its deleted ui/Dockerfile.
+        assertThat(compose).doesNotContain("8082");
+        assertThat(compose).doesNotContain("ui/Dockerfile");
+        assertThat(compose).doesNotContain("nginx");
     }
 
     private ConfigurableApplicationContext runDemoContext(String... properties) {

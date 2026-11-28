@@ -5,14 +5,12 @@ target/
 *.jar
 *.class
 
-# Node / Angular (see also ui/.gitignore)
+# Node
 node_modules/
 dist/
-.angular/
 
 # Logs
 *.log
-ngserve.log
 test_output*.txt
 
 # Coding orchestrator run files

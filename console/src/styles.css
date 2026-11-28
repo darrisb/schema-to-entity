@@ -1,0 +1,213 @@
+:root {
+  --console-background: #f6f7f9;
+  --console-foreground: #1f2937;
+  --console-text-muted: #6b7280;
+  --console-accent: #2563eb;
+  --console-border: #d6dae1;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--console-background);
+  color: var(--console-foreground);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  line-height: 1.5;
+}
+
+.app-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem 1.5rem;
+  padding: 1rem 1.5rem;
+  background: #ffffff;
+  border-bottom: 1px solid var(--console-border);
+}
+
+.app-title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.nav-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.nav-list a {
+  display: inline-block;
+  padding: 0.35rem 0.75rem;
+  border-radius: 0.375rem;
+  color: var(--console-foreground);
+  font-size: 0.9rem;
+  text-decoration: none;
+}
+
+.nav-list a:hover {
+  background: #eef1f5;
+}
+
+.nav-list a[aria-current="page"] {
+  background: var(--console-accent);
+  color: #ffffff;
+}
+
+main {
+  max-width: 960px;
+  margin: 1.5rem auto;
+  padding: 0 1.5rem;
+}
+
+/* CN-004: relationships screen */
+.screen-error {
+  margin: 0.75rem 0;
+  padding: 0.6rem 0.9rem;
+  border: 1px solid #fca5a5;
+  border-radius: 0.375rem;
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.relationships-section {
+  margin-top: 1.75rem;
+}
+
+.section-heading {
+  margin: 0 0 0.6rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.relationships-section ui-card + ui-card {
+  margin-top: 0.6rem;
+}
+
+.relationships-section ui-text {
+  margin-top: 0.35rem;
+}
+
+.relationship-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+/* CN-005: links screen */
+.link-form-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.75rem 1rem;
+}
+
+.link-form-actions {
+  margin-top: 0.75rem;
+}
+
+.link-form-error {
+  margin-top: 0.75rem;
+}
+
+.links-list {
+  margin-top: 1.75rem;
+}
+
+.links-list ui-card {
+  margin-top: 0.6rem;
+}
+
+.links-list ui-text {
+  margin-top: 0.35rem;
+}
+
+/* CN-006: labels screen */
+.labels-rows {
+  margin-top: 1.25rem;
+}
+
+.labels-rows ui-card,
+.labels-rows ui-text {
+  margin-top: 0.6rem;
+}
+
+.label-row-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.75rem 1rem;
+}
+
+.label-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.row-error {
+  margin-top: 0.75rem;
+}
+
+/* CN-007: data screen */
+.data-results {
+  margin-top: 1.25rem;
+}
+
+.data-results ui-text,
+.data-results ui-table {
+  margin-top: 0.6rem;
+}
+
+/* CN-008: drift screen */
+.drift-list {
+  margin-top: 1.75rem;
+}
+
+.drift-list ui-card {
+  margin-top: 0.6rem;
+}
+
+.drift-list ui-text {
+  margin-top: 0.35rem;
+}
+
+.drift-severity {
+  margin-top: 0.85rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--console-text-muted);
+}
+
+[data-severity="BREAKING"] {
+  color: #b91c1c;
+}
+
+[data-severity="REVIEW"] {
+  color: #b45309;
+}
+
+[data-severity="ADDITIVE"] {
+  color: #15803d;
+}
+
+.drift-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.85rem;
+}
+
+.drift-error {
+  margin-top: 0.75rem;
+}

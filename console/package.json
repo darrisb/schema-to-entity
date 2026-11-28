@@ -1,0 +1,27 @@
+{
+  "name": "schema-to-entity-console",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "test": "tsc -p tsconfig.test.json && node --test \"dist-test/**/*.test.js\"",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@visual-ui/core": "file:vendor/visual-ui-core-0.2.0.tgz",
+    "@visual-ui/components": "file:vendor/visual-ui-components-0.2.0.tgz",
+    "@visual-ui/renderer": "file:vendor/visual-ui-renderer-0.2.0.tgz",
+    "@visual-ui/schema": "file:vendor/visual-ui-schema-0.2.0.tgz"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "happy-dom": "^17.0.0",
+    "typescript": "^5.9.0",
+    "vite": "^7.0.0"
+  }
+}

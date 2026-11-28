@@ -1,0 +1,5 @@
+/* CN-009 fixture: stands in for a hashed Vite stylesheet under static/console/,
+   mirroring the real build, which emits a css next to the js. */
+.console-root {
+  font-family: system-ui, sans-serif;
+}

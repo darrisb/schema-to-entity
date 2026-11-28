@@ -1,7 +1,16 @@
 .git
 .gitignore
-**/.angular
 **/dist
 **/node_modules
 **/target
 **/*.log
+
+# CN-009: the API image builds console/ itself, so its sources and the
+# vendor/ tarballs npm ci needs must stay in the build context. The global
+# patterns above already drop console/node_modules and console/dist (the
+# image installs and builds them inside the console stage); these explicit
+# entries keep that true if the global patterns change and also skip the
+# Node test build output.
+console/node_modules/
+console/dist/
+console/dist-test/
