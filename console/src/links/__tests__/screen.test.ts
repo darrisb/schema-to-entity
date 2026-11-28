@@ -134,12 +134,15 @@ const ENTITIES: GraphEntity[] = [
   ]),
 ];
 
-function graphWith(relationships: GraphRelationship[]): SchemaGraph {
+function graphWith(
+  relationships: GraphRelationship[],
+  entities: GraphEntity[] = ENTITIES,
+): SchemaGraph {
   return {
     specVersion: "1.0",
     generatedAt: "2026-11-27T09:00:00Z",
     sources: [],
-    entities: ENTITIES,
+    entities,
     relationships,
     orphans: [],
   };
@@ -435,4 +438,40 @@ test("the Refresh button re-reads the document", async () => {
 
   assert.equal(fake.state.graphRequests.length, 2);
   assert.equal(cardOf(container, EXISTING.id), null, "the latest document was re-rendered");
+});
+
+test("a reload rebuilds filled sides' column lists and drops vanished columns", async () => {
+  // Drifted document: demo:users lost its username column, billing:invoices
+  // gained total but kept customer_id.
+  const fresh = graphWith([], [
+    entity("demo:users", "demo", "users", [column("demo:users.id", "id")]),
+    entity("billing:invoices", "billing", "invoices", [
+      column("billing:invoices.id", "id"),
+      column("billing:invoices.customer_id", "customer_id"),
+      column("billing:invoices.total", "total"),
+    ]),
+  ]);
+  const fake = fakeClient([graphWith([]), fresh]);
+  const { container, done } = await mount(fake.client);
+
+  pickSide(container, "from", "demo:users", "demo:users.username");
+  pickSide(container, "to", "billing:invoices", "billing:invoices.customer_id");
+
+  const refresh = buttonIn(container, "refresh");
+  assert.ok(refresh);
+  refresh.click();
+  await done();
+
+  // The from side's column is gone from the document: list rebuilt, choice dropped.
+  const fromColumn = dropdown(container, "from-column");
+  assert.deepEqual(optionValues(fromColumn), ["demo:users.id"]);
+  assert.equal(fromColumn.value, "");
+  // The to side's column still exists: list rebuilt, choice kept.
+  const toColumn = dropdown(container, "to-column");
+  assert.deepEqual(optionValues(toColumn), [
+    "billing:invoices.id",
+    "billing:invoices.customer_id",
+    "billing:invoices.total",
+  ]);
+  assert.equal(toColumn.value, "billing:invoices.customer_id");
 });

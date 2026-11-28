@@ -16,7 +16,9 @@
  * error area instead. A success reloads the document — the new manual link
  * appears in the list — and Create additionally resets the form; Remove
  * reloads but keeps the current selections so several links can be built
- * without re-picking the same entities. startLinks returns the same pending()
+ * without re-picking the same entities; a reload rebuilds the column lists of
+ * any side already filled and drops a column the fresh document no longer
+ * carries. startLinks returns the same pending()
  * accessor as startRelationships: it resolves once every screen task started
  * so far has finished rendering, which is what the DOM tests await.
  */
@@ -202,6 +204,31 @@ export function startLinks(
   wireEntityChoice(fromEntity, fromColumn);
   wireEntityChoice(toEntity, toColumn);
 
+  /**
+   * Reloads keep an already-chosen side, but ui-dropdown holds its value even
+   * when a new options list no longer carries it. Rebuild each filled side's
+   * column options from the fresh document and drop a column the document no
+   * longer contains, so Refresh or the post-Remove reload cannot leave a stale
+   * id on screen — the same guarantee the entity-change handler gives.
+   */
+  function refreshColumnChoices(
+    fresh: SchemaGraph,
+    entityDropdown: DropdownElement,
+    columnDropdown: DropdownElement,
+  ): void {
+    if (entityDropdown.value === "") {
+      return;
+    }
+    const options = columnOptions(fresh, entityDropdown.value);
+    setOptions(columnDropdown, options);
+    if (
+      columnDropdown.value !== "" &&
+      !options.some((option) => option.value === columnDropdown.value)
+    ) {
+      columnDropdown.value = "";
+    }
+  }
+
   async function load(): Promise<void> {
     const seq = ++loadSeq;
     if (loading.parentNode !== header) {
@@ -219,6 +246,8 @@ export function startLinks(
       graph = fresh;
       setOptions(fromEntity, entityOptions(fresh));
       setOptions(toEntity, entityOptions(fresh));
+      refreshColumnChoices(fresh, fromEntity, fromColumn);
+      refreshColumnChoices(fresh, toEntity, toColumn);
       renderManualList(fresh);
     } catch (error) {
       if (seq === loadSeq) {
