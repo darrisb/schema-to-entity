@@ -2,13 +2,14 @@
  * Hash router for the console.
  *
  * parseRoute is pure string handling and testable without a DOM; start wires
- * hashchange events to the screen renderers below. The relationships, links
- * and labels screens are real (CN-004, CN-005, CN-006) and own their
- * container through their start functions; the remaining routes are
+ * hashchange events to the screen renderers below. The relationships, links,
+ * labels and data screens are real (CN-004, CN-005, CN-006, CN-007) and own
+ * their container through their start functions; the remaining routes are
  * placeholders whose tasks replace their renderScreen branch the same way.
  */
 
 import { createClient, type ApiClient } from "./api/client.js";
+import { startData } from "./data/screen.js";
 import { startLabels } from "./labels/screen.js";
 import { startLinks } from "./links/screen.js";
 import { startRelationships } from "./relationships/screen.js";
@@ -37,7 +38,7 @@ const SCREEN_DESCRIPTIONS: Record<Route, string> = {
   relationships: "Review and confirm proposed entity relationships.",
   links: "Manage manual links between entities.",
   labels: "Edit entity and field labels.",
-  data: "Browse the read-only data API. (Placeholder)",
+  data: "Browse the read-only data API.",
   drift: "Inspect schema drift against baselines. (Placeholder)",
 };
 
@@ -73,6 +74,12 @@ export function renderScreen(
     // The labels screen (CN-006) fetches, renders the picked entity's rows
     // and reloads after every edit, on its own like the two above.
     void startLabels(container, client);
+    return;
+  }
+  if (route === "data") {
+    // The data screen (CN-007) fetches the document, then pages and sorts
+    // one entity's rows through the table's own events, on its own again.
+    void startData(container, client);
     return;
   }
   const card = document.createElement("ui-card");
