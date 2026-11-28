@@ -16,9 +16,9 @@
  * error area instead. A success reloads the document — the new manual link
  * appears in the list — and Create additionally resets the form; Remove
  * reloads but keeps the current selections so several links can be built
- * without re-picking the same entities; a reload rebuilds the column lists of
- * any side already filled and drops a column the fresh document no longer
- * carries. startLinks returns the same pending()
+ * without re-picking the same entities; a reload rebuilds a filled side from
+ * the fresh document, dropping a vanished column or a whole side whose entity
+ * is gone. startLinks returns the same pending()
  * accessor as startRelationships: it resolves once every screen task started
  * so far has finished rendering, which is what the DOM tests await.
  */
@@ -206,20 +206,33 @@ export function startLinks(
 
   /**
    * Reloads keep an already-chosen side, but ui-dropdown holds its value even
-   * when a new options list no longer carries it. Rebuild each filled side's
-   * column options from the fresh document and drop a column the document no
-   * longer contains, so Refresh or the post-Remove reload cannot leave a stale
-   * id on screen — the same guarantee the entity-change handler gives.
+   * when a new options list no longer carries it. Rebuild each filled side from
+   * the fresh document: if the chosen entity itself vanished, clear that whole
+   * side (both dropdowns); otherwise rebuild the column options and drop a
+   * column the document no longer contains, so Refresh or the post-Remove
+   * reload cannot leave a stale id on screen — the same guarantee the
+   * entity-change handler gives.
    */
-  function refreshColumnChoices(
+  function refreshSideChoices(
     fresh: SchemaGraph,
     entityDropdown: DropdownElement,
     columnDropdown: DropdownElement,
   ): void {
-    if (entityDropdown.value === "") {
+    const chosenEntity = entityDropdown.value;
+    if (chosenEntity === "") {
       return;
     }
-    const options = columnOptions(fresh, entityDropdown.value);
+    if (!entityOptions(fresh).some((option) => option.value === chosenEntity)) {
+      // The entity the side points at is gone; neither of its ids means
+      // anything in the fresh document, so drop the whole side. Clearing the
+      // entity's value is what keeps the displayed choice honest: ui-dropdown
+      // would otherwise restore the stale id into the re-rendered select.
+      entityDropdown.value = "";
+      columnDropdown.value = "";
+      setOptions(columnDropdown, []);
+      return;
+    }
+    const options = columnOptions(fresh, chosenEntity);
     setOptions(columnDropdown, options);
     if (
       columnDropdown.value !== "" &&
@@ -246,8 +259,8 @@ export function startLinks(
       graph = fresh;
       setOptions(fromEntity, entityOptions(fresh));
       setOptions(toEntity, entityOptions(fresh));
-      refreshColumnChoices(fresh, fromEntity, fromColumn);
-      refreshColumnChoices(fresh, toEntity, toColumn);
+      refreshSideChoices(fresh, fromEntity, fromColumn);
+      refreshSideChoices(fresh, toEntity, toColumn);
       renderManualList(fresh);
     } catch (error) {
       if (seq === loadSeq) {

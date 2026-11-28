@@ -475,3 +475,37 @@ test("a reload rebuilds filled sides' column lists and drops vanished columns", 
   ]);
   assert.equal(toColumn.value, "billing:invoices.customer_id");
 });
+
+test("a reload clears a side whose entity vanished from the fresh document", async () => {
+  // Drifted document: demo:users is gone entirely; billing:invoices unchanged.
+  const fresh = graphWith([], [
+    entity("billing:invoices", "billing", "invoices", [
+      column("billing:invoices.id", "id"),
+      column("billing:invoices.customer_id", "customer_id"),
+    ]),
+  ]);
+  const fake = fakeClient([graphWith([]), fresh]);
+  const { container, done } = await mount(fake.client);
+
+  pickSide(container, "from", "demo:users", "demo:users.username");
+  pickSide(container, "to", "billing:invoices", "billing:invoices.customer_id");
+
+  const refresh = buttonIn(container, "refresh");
+  assert.ok(refresh);
+  refresh.click();
+  await done();
+
+  // ui-dropdown restores its value even into an options list that no longer
+  // carries it, so the side must be cleared explicitly, not just refilled.
+  const fromEntity = dropdown(container, "from-entity");
+  assert.equal(fromEntity.value, "");
+  const fromColumn = dropdown(container, "from-column");
+  assert.equal(fromColumn.value, "");
+  assert.deepEqual(optionValues(fromColumn), []);
+  const select = fromEntity.shadowRoot?.querySelector("select");
+  assert.ok(select);
+  assert.equal(select.value, "", "the entity select shows no stale id");
+  // The side whose entity survived keeps both choices.
+  assert.equal(dropdown(container, "to-entity").value, "billing:invoices");
+  assert.equal(dropdown(container, "to-column").value, "billing:invoices.customer_id");
+});
