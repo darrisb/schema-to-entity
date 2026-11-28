@@ -1,6 +1,7 @@
 :root {
   --console-background: #f6f7f9;
   --console-foreground: #1f2937;
+  --console-text-muted: #6b7280;
   --console-accent: #2563eb;
   --console-border: #d6dae1;
 }
