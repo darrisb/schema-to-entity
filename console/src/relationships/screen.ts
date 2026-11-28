@@ -6,10 +6,13 @@
  * and renders it through view.ts. A card click disables that card's buttons,
  * calls the client and, on success, reloads the document and re-renders; on
  * failure it shows the ApiError message in the error area above the list and
- * re-enables the buttons. The Refresh ui-button re-reads the document
- * without touching any decision. startRelationships returns a pending()
- * accessor that resolves when the initial load or the most recent click's
- * work has settled, which is what the DOM tests await; the router ignores it.
+ * re-enables the buttons. While any screen work is in flight the Refresh
+ * button is disabled (and its listener ignores clicks), and every load
+ * re-shows the loading line; a load only renders when it is still the newest
+ * request, so a late stale response cannot overwrite fresher data.
+ * startRelationships returns a pending() accessor that resolves when the
+ * initial load or the most recent click's work has settled, which is what
+ * the DOM tests await; the router ignores it.
  */
 
 import { ApiError, type ApiClient } from "../api/client.js";
@@ -41,6 +44,10 @@ export function startRelationships(
   refresh.setAttribute("data-action", "refresh");
   refresh.setAttribute("variant", "secondary");
   refresh.addEventListener("click", () => {
+    // A click that reaches the disabled host must not start a second load.
+    if (refresh.hasAttribute("disabled")) {
+      return;
+    }
     begin(load);
   });
   header.appendChild(refresh);
@@ -61,9 +68,20 @@ export function startRelationships(
 
   /** The most recent async work; load and runDecision catch, so it never rejects. */
   let current: Promise<void> = Promise.resolve();
+  /** Screen work in flight (loads and decisions); Refresh stays disabled until it drains. */
+  let inFlight = 0;
+  /** Sequence of getGraph requests; only the newest response is allowed to render. */
+  let loadSeq = 0;
 
   function begin(work: () => Promise<void>): void {
-    current = work();
+    inFlight += 1;
+    refresh.setAttribute("disabled", "");
+    current = work().finally(() => {
+      inFlight -= 1;
+      if (inFlight === 0) {
+        refresh.removeAttribute("disabled");
+      }
+    });
   }
 
   function showError(error: unknown): void {
@@ -80,14 +98,24 @@ export function startRelationships(
   }
 
   async function load(): Promise<void> {
+    const seq = ++loadSeq;
+    if (loading.parentNode !== header) {
+      // Re-show the indicator: the first load removed it again below.
+      header.appendChild(loading);
+    }
     try {
       const graph = await client.getGraph(true);
+      if (seq !== loadSeq) {
+        return; // a newer load started meanwhile; its response renders instead
+      }
       clearError();
       renderRelationships(list, groupRelationships(graph), graph, handlers);
     } catch (error) {
-      showError(error);
+      if (seq === loadSeq) {
+        showError(error);
+      }
     } finally {
-      if (loading.parentNode === header) {
+      if (seq === loadSeq && loading.parentNode === header) {
         header.removeChild(loading);
       }
     }

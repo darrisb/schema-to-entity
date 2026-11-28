@@ -154,7 +154,15 @@ function actionButton(
   button.setAttribute("label", label);
   button.setAttribute("data-action", action);
   button.setAttribute("variant", variant);
-  button.addEventListener("click", onClick);
+  button.addEventListener("click", () => {
+    // setRelationshipButtonsEnabled marks buttons whose decision is in
+    // flight, but ui-button's disabled only blocks its inner button: a click
+    // that reaches the host still fires this listener, so ignore it here.
+    if (button.hasAttribute("disabled")) {
+      return;
+    }
+    onClick();
+  });
   return button;
 }
 

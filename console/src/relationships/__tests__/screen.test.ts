@@ -22,15 +22,26 @@ interface FakeState {
   removals: string[];
 }
 
+/** A promise plus its resolver, to hold a request open between assertions. */
+function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+  let resolve: (value: T) => void = () => {};
+  const promise = new Promise<T>((settle) => {
+    resolve = settle;
+  });
+  return { promise, resolve };
+}
+
 /**
  * A fake ApiClient: getGraph replays the queued graphs (the last one repeats
  * forever, an empty queue always fails), the decision methods record their
- * calls and may be given an implementation that throws. The data and drift
- * methods throw when called — this screen must not touch them.
+ * calls and may be given an implementation that throws. A getGraph override
+ * takes over the response entirely — requests are still counted. The data
+ * and drift methods throw when called — this screen must not touch them.
  */
 function fakeClient(
   graphs: SchemaGraph[],
   behaviour: {
+    getGraph?: () => Promise<SchemaGraph>;
     decide?: (id: string, status: RelationshipStatus | null) => Promise<void>;
     remove?: (id: string) => Promise<void>;
   } = {},
@@ -42,6 +53,9 @@ function fakeClient(
   const client: ApiClient = {
     getGraph: async (includeRejected: boolean): Promise<SchemaGraph> => {
       state.graphRequests.push(includeRejected);
+      if (behaviour.getGraph) {
+        return behaviour.getGraph();
+      }
       const graph = graphs[Math.min(state.graphRequests.length - 1, graphs.length - 1)];
       if (graph === undefined) {
         throw new ApiError(500, "the graph could not be built");
@@ -117,6 +131,13 @@ function errorArea(container: HTMLElement): HTMLElement | null {
   return container.querySelector<HTMLElement>(".screen-error");
 }
 
+/** The relationship ids of the cards in one section, in render order. */
+function sectionCardIds(container: HTMLElement, key: string): string[] {
+  return Array.from(sectionOf(container, key)?.querySelectorAll("ui-card") ?? []).map(
+    (card) => card.getAttribute("data-relationship-id") ?? "",
+  );
+}
+
 test("the screen loads the document with includeRejected=true and renders it", async () => {
   const fake = fakeClient([graphWith([relationship(PROPOSED_ID, "proposed")])]);
   const { container } = await mount(fake.client);
@@ -169,6 +190,61 @@ test("clicking Confirm decides 'confirmed' then reloads and re-renders", async (
   const undo = buttonIn(cardOf(container, id), "undo");
   assert.ok(undo, "the reloaded card offers Undo");
   assert.equal(undo.hasAttribute("disabled"), false);
+});
+
+test("clicking Reject decides 'rejected' then reloads and re-renders", async () => {
+  const id = PROPOSED_ID;
+  const fake = fakeClient([
+    graphWith([relationship(id, "proposed")]),
+    graphWith([relationship(id, "rejected")]),
+  ]);
+  const { container, done } = await mount(fake.client);
+
+  const card = cardOf(container, id);
+  assert.ok(card);
+  const reject = buttonIn(card, "reject");
+  assert.ok(reject);
+
+  reject.click();
+  assert.ok(reject.hasAttribute("disabled"), "the card is disabled while the decision runs");
+
+  await done();
+
+  assert.deepEqual(fake.state.decisions, [{ id, status: "rejected" }]);
+  assert.equal(fake.state.graphRequests.length, 2, "the graph was re-read after the decision");
+  assert.equal(sectionOf(container, "proposed")?.querySelectorAll("ui-card").length, 0);
+  assert.deepEqual(sectionCardIds(container, "rejected"), [id]);
+});
+
+test("a second click while a decision is in flight sends exactly one request", async () => {
+  const id = PROPOSED_ID;
+  const decision = deferred<void>();
+  const fake = fakeClient(
+    [graphWith([relationship(id, "proposed")]), graphWith([relationship(id, "confirmed")])],
+    { decide: () => decision.promise },
+  );
+  const { container, done } = await mount(fake.client);
+
+  const card = cardOf(container, id);
+  assert.ok(card);
+  const confirm = buttonIn(card, "confirm");
+  const reject = buttonIn(card, "reject");
+  assert.ok(confirm && reject);
+
+  confirm.click();
+  // Both clicks reach the host while the decision is pending; the disabled
+  // guard must swallow the re-entry, and the sibling button too.
+  confirm.click();
+  reject.click();
+  assert.deepEqual(fake.state.decisions, [{ id, status: "confirmed" }]);
+  assert.equal(fake.state.graphRequests.length, 1);
+
+  decision.resolve(undefined);
+  await done();
+
+  assert.deepEqual(fake.state.decisions, [{ id, status: "confirmed" }]);
+  assert.equal(fake.state.graphRequests.length, 2, "one reload for the single decision");
+  assert.deepEqual(sectionCardIds(container, "confirmed"), [id]);
 });
 
 test("Undo clears a decision with status null; Remove calls removeRelationship", async () => {
@@ -232,7 +308,7 @@ test("a failed decision shows the error and re-enables the buttons; success then
   assert.equal(sectionOf(container, "confirmed")?.querySelectorAll("ui-card").length, 1);
 });
 
-test("the Refresh button re-reads the document", async () => {
+test("the Refresh button re-reads the document with in-flight feedback", async () => {
   const id = PROPOSED_ID;
   const fake = fakeClient([graphWith([relationship(id, "proposed")]), graphWith([])]);
   const { container, done } = await mount(fake.client);
@@ -244,8 +320,64 @@ test("the Refresh button re-reads the document", async () => {
   assert.ok(refresh, "the header card carries the Refresh button");
 
   refresh.click();
+  // While the reload is in flight the loading line is back and Refresh is
+  // disabled, so the user sees the request and a second click is ignored.
+  assert.ok(header.querySelector('ui-text[content="Loading the schema document…"]'));
+  assert.ok(refresh.hasAttribute("disabled"));
+  refresh.click();
+
   await done();
 
-  assert.equal(fake.state.graphRequests.length, 2);
+  assert.equal(fake.state.graphRequests.length, 2, "one click, one reload");
   assert.equal(cardOf(container, id), null, "the refreshed (empty) document was re-rendered");
+  assert.equal(header.querySelector('ui-text[content="Loading the schema document…"]'), null);
+  assert.equal(refresh.hasAttribute("disabled"), false);
+});
+
+test("a stale load response cannot overwrite a newer render", async () => {
+  const idA = "a:a.a->b:b.b";
+  const idB = "c:c.c->d:d.d";
+  const bothProposed = graphWith([relationship(idA, "proposed"), relationship(idB, "proposed")]);
+  const bConfirmed = graphWith([relationship(idA, "proposed"), relationship(idB, "confirmed")]);
+  const stale = deferred<SchemaGraph>();
+  let graphCalls = 0;
+  const fake = fakeClient([], {
+    getGraph: () => {
+      graphCalls += 1;
+      // A's reload (call 2) hangs until after B's newer reload answered.
+      if (graphCalls === 2) {
+        return stale.promise;
+      }
+      return Promise.resolve(graphCalls === 3 ? bConfirmed : bothProposed);
+    },
+  });
+  const { container, done } = await mount(fake.client);
+
+  const confirmA = buttonIn(cardOf(container, idA), "confirm");
+  const confirmB = buttonIn(cardOf(container, idB), "confirm");
+  assert.ok(confirmA && confirmB);
+  confirmA.click();
+  confirmB.click();
+  // pending() tracks the most recent click's work, which completes first.
+  await done();
+  assert.deepEqual(sectionCardIds(container, "proposed"), [idA], "the fresh document rendered");
+  assert.deepEqual(sectionCardIds(container, "confirmed"), [idB]);
+
+  // A's reload now answers with the old document, which still shows B proposed.
+  stale.resolve(bothProposed);
+  // Let the continuation of that late response run to the end.
+  await new Promise((resolve) => {
+    setTimeout(resolve, 0);
+  });
+
+  assert.deepEqual(
+    sectionCardIds(container, "proposed"),
+    [idA],
+    "the stale response was discarded, not re-rendered",
+  );
+  assert.deepEqual(sectionCardIds(container, "confirmed"), [idB]);
+  const header = container.querySelector("ui-card");
+  assert.ok(header);
+  assert.equal(header.querySelector('ui-text[content="Loading the schema document…"]'), null);
+  assert.equal(buttonIn(header, "refresh")?.hasAttribute("disabled"), false);
 });
