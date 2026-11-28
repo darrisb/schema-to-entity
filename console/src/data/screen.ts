@@ -11,9 +11,20 @@
  * mutates rows — it only writes the columns and data-bound-rows JSON
  * attributes and moves data-ds-status through loading, idle, empty or error.
  *
+ * The component contract was verified against
+ * node_modules/@visual-ui/components/dist/table/ui-table.js: sort-change
+ * carries detail {sort} (toggleSort, which also mirrors the sort onto the
+ * host sort attribute) and page-change carries detail {offset, limit},
+ * while the page offset itself is kept only in the internal _offset field.
+ * Because the offset has no readable attribute, the screen records the last
+ * issued query (table, entity, offset, sort) in its own `view` variable and
+ * the page-change handler takes the sort from there rather than reading a
+ * host attribute; Refresh re-issues that recorded query so the rows on
+ * screen follow a reloaded document.
+ *
  * The table element is rebuilt on every entity pick on purpose: ui-table
  * tracks its requested offset internally, and a fresh element is the only
- * way to be sure the new entity starts at page one and no stale sort attribute
+ * way to be sure the new entity starts at page one and no stale sort state
  * carries over. Row shaping (columns, page text, JSON cells for nested
  * values) lives in data/model.ts; this module only builds elements and wires
  * events.
@@ -107,6 +118,14 @@ export function startData(
   pageText.setAttribute("data-info", "page");
   pageText.setAttribute("content", "");
 
+  /**
+   * The table on screen and the last query issued for it, or null while the
+   * hint shows. Set by showEntity and by both table handlers; read by Refresh
+   * to reload the visible page. Declared before the first showHint() call.
+   */
+  let view: { table: HTMLElement; entity: GraphEntity; offset: number; sort: string } | null =
+    null;
+
   container.replaceChildren(header, errorArea, picker, results);
   showHint();
 
@@ -152,6 +171,7 @@ export function startData(
   }
 
   function showHint(): void {
+    view = null;
     const hint = document.createElement("ui-text");
     hint.setAttribute("content", "Choose an entity to browse its rows.");
     pageText.setAttribute("content", "");
@@ -206,8 +226,13 @@ export function startData(
       if (sort === null) {
         return;
       }
+      if (view === null || view.table !== table) {
+        return; // an event from a table this screen already replaced
+      }
       // A new order starts over: the component resets its own offset and the
-      // screen reloads page one with the sort the event names.
+      // screen records the sort the event names, from the verified detail
+      // {sort}, rather than reading a host attribute back.
+      view = { table, entity, offset: 0, sort };
       begin(() => runQuery(table, entity, 0, sort));
     });
     table.addEventListener("page-change", (event: Event) => {
@@ -215,14 +240,20 @@ export function startData(
       if (position === null) {
         return;
       }
-      // The table already advanced its tracked offset; fetch exactly the page
-      // it asks for, under the sort currently shown on it.
-      const sort = table.getAttribute("sort") ?? "";
+      if (view === null || view.table !== table) {
+        return; // an event from a table this screen already replaced
+      }
+      // The table already advanced its internal offset; fetch exactly the
+      // page the event names (detail {offset, limit}) under the sort this
+      // screen last recorded.
+      const sort = view.sort;
+      view = { table, entity, offset: position.offset, sort };
       begin(() => runQuery(table, entity, position.offset, sort));
     });
 
     results.replaceChildren(pageText, table);
     pageText.setAttribute("content", "");
+    view = { table, entity, offset: 0, sort: "" };
     begin(() => runQuery(table, entity, 0, ""));
   }
 
@@ -251,6 +282,11 @@ export function startData(
         // and take its table off screen, as the labels screen does with rows.
         entityDropdown.value = "";
         showHint();
+      } else if (view !== null) {
+        // A table is on screen: re-issue the recorded query, at the page and
+        // order currently shown, so Refresh updates the rows the user is
+        // looking at and not only the dropdown's document.
+        await runQuery(view.table, view.entity, view.offset, view.sort);
       }
     } catch (error) {
       if (seq === loadSeq) {

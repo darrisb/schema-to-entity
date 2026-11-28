@@ -343,3 +343,60 @@ test("picking another entity starts over on a fresh table", async () => {
   ]);
   assert.equal(container.querySelectorAll("ui-table").length, 1, "the old table is gone");
 });
+
+function refreshButton(container: HTMLElement): HTMLElement {
+  const found = container.querySelector<HTMLElement>("ui-button[data-action='refresh']");
+  assert.ok(found, "the header card carries the Refresh button");
+  return found;
+}
+
+test("Refresh re-queries the visible table at its recorded page and sort", async () => {
+  const fake = fakeClient([graphWith([USERS])]);
+  const { container, done } = await mount(fake.client);
+  choose(entityDropdown(container), "demo:users");
+  await done();
+  clickHeader(tableOnScreen(container), "username");
+  await done();
+  clickNext(tableOnScreen(container));
+  await done();
+
+  fake.queries.length = 0;
+  refreshButton(container).click();
+  await done();
+
+  // The same page the table shows (offset 50, username asc), not page one.
+  assert.deepEqual(fake.queries, [
+    { source: "demo", entity: "users", options: { limit: 50, offset: 50, sort: "username" } },
+  ]);
+  const table = tableOnScreen(container);
+  assert.equal(table.getAttribute("data-ds-status"), "idle");
+  assert.equal(pageText(container), "Rows 51\u2013100 of 340");
+});
+
+test("Refresh with no entity picked reloads the document only", async () => {
+  const fake = fakeClient([graphWith([USERS])]);
+  const { container, done } = await mount(fake.client);
+
+  refreshButton(container).click();
+  await done();
+
+  assert.deepEqual(fake.queries, [], "no table, so no row query");
+  assert.equal(container.querySelector("ui-table"), null);
+  assert.deepEqual(optionValues(entityDropdown(container)), ["demo:users"]);
+});
+
+test("Refresh that drops the picked entity clears the table and skips the re-query", async () => {
+  // Second getGraph replays the graph without demo:users, as if it vanished.
+  const fake = fakeClient([graphWith([USERS]), graphWith([INVOICES])]);
+  const { container, done } = await mount(fake.client);
+  choose(entityDropdown(container), "demo:users");
+  await done();
+
+  fake.queries.length = 0;
+  refreshButton(container).click();
+  await done();
+
+  assert.deepEqual(fake.queries, [], "the dropped entity is not re-queried");
+  assert.equal(container.querySelector("ui-table"), null, "its table is off screen");
+  assert.equal(entityDropdown(container).value, "");
+});
