@@ -3,13 +3,14 @@
  *
  * parseRoute is pure string handling and testable without a DOM; start wires
  * hashchange events to the screen renderers below. The relationships, links,
- * labels and data screens are real (CN-004, CN-005, CN-006, CN-007) and own
- * their container through their start functions; the remaining routes are
- * placeholders whose tasks replace their renderScreen branch the same way.
+ * labels, data and drift screens are real (CN-004, CN-005, CN-006, CN-007,
+ * CN-008) and own their container through their start functions; a route with
+ * no screen yet falls through to the placeholder card at the end.
  */
 
 import { createClient, type ApiClient } from "./api/client.js";
 import { startData } from "./data/screen.js";
+import { startDrift } from "./drift/screen.js";
 import { startLabels } from "./labels/screen.js";
 import { startLinks } from "./links/screen.js";
 import { startRelationships } from "./relationships/screen.js";
@@ -80,6 +81,12 @@ export function renderScreen(
     // The data screen (CN-007) fetches the document, then pages and sorts
     // one entity's rows through the table's own events, on its own again.
     void startData(container, client);
+    return;
+  }
+  if (route === "drift") {
+    // The drift screen (CN-008) reads every source's report, groups its
+    // changes by severity and runs the accept/rename actions on its own.
+    void startDrift(container, client);
     return;
   }
   const card = document.createElement("ui-card");

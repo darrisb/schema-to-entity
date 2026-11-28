@@ -165,3 +165,48 @@ main {
 .data-results ui-table {
   margin-top: 0.6rem;
 }
+
+/* CN-008: drift screen */
+.drift-list {
+  margin-top: 1.75rem;
+}
+
+.drift-list ui-card {
+  margin-top: 0.6rem;
+}
+
+.drift-list ui-text {
+  margin-top: 0.35rem;
+}
+
+.drift-severity {
+  margin-top: 0.85rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--console-text-muted);
+}
+
+[data-severity="BREAKING"] {
+  color: #b91c1c;
+}
+
+[data-severity="REVIEW"] {
+  color: #b45309;
+}
+
+[data-severity="ADDITIVE"] {
+  color: #15803d;
+}
+
+.drift-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.85rem;
+}
+
+.drift-error {
+  margin-top: 0.75rem;
+}
