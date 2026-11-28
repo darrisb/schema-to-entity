@@ -154,9 +154,12 @@ class DemoApplicationTests {
     }
 
     @Test
-    void localUiDevServerIsAnAllowedOrigin() {
+    void uiLibraryDevServerIsAnAllowedOriginAndTheAngularUiIsNot() {
+        // CN-010: the Angular UI (port 4200) is retired; the console is served
+        // by the API itself, so it needs no CORS entry.
         assertThat(properties.getDataAllowedOrigins())
-                .contains("http://localhost:4200");
+                .contains("http://localhost:5173")
+                .doesNotContain("http://localhost:4200");
     }
 
     @Test
